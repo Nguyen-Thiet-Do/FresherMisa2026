@@ -11,12 +11,12 @@ namespace FresherMisa2026.WebAPI.Controllers
     [ApiController]
     public class DepartmentsController : BaseController<Department>
     {
-        private readonly IDepartmentSerice _departmentSerice;
+        private readonly IDepartmentService _departmentService;
 
         public DepartmentsController(
-            IDepartmentSerice departmentSerice) : base(departmentSerice)
+            IDepartmentService departmentService) : base(departmentService)
         {
-            _departmentSerice = departmentSerice;
+            _departmentService = departmentService;
         }
 
 
@@ -28,7 +28,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         [HttpGet("Code/{code}")]
         public async Task<ActionResult<ServiceResponse>> GetByCode(string code)
         {
-            var response = await _departmentSerice.GetDepartmentByCodeAsync(code);
+            var response = await _departmentService.GetDepartmentByCodeAsync(code);
 
             if (!response.IsSuccess)
             {
@@ -49,7 +49,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         [HttpGet("{code}/employees")]
         public async Task<ActionResult<ServiceResponse>> GetEmployeesByDepartmentCode(string code)
         {
-            var response = await _departmentSerice.GetEmployeesByDepartmentCodeAsync(code);
+            var response = await _departmentService.GetEmployeesByDepartmentCodeAsync(code);
             if (!response.IsSuccess)
             {
                 if (response.Code == (int)ResponseCode.NotFound)
@@ -69,7 +69,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         [HttpGet("{code}/employee-count")]
         public async Task<ActionResult<ServiceResponse>> GetEmployeeCountByDepartmentCode(string code)
         {
-            var response = await _departmentSerice.GetEmployeeCountByDepartmentCodeAsync(code);
+            var response = await _departmentService.GetEmployeeCountByDepartmentCodeAsync(code);
             if (!response.IsSuccess)
             {
                 if (response.Code == (int)ResponseCode.NotFound)

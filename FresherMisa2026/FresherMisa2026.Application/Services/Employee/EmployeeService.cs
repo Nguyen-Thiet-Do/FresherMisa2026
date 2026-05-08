@@ -35,7 +35,7 @@ namespace FresherMisa2026.Application.Services
         {
             var employee = await _employeeRepository.GetEmployeeByCode(code);
             if (employee == null)
-                throw new Exception("Employee not found");
+                throw new KeyNotFoundException("Không tìm thấy nhân viên");
 
             return employee;
         }
@@ -157,75 +157,37 @@ namespace FresherMisa2026.Application.Services
         {
             if (string.IsNullOrWhiteSpace(employeeCode))
                 return null;
-            var existingEmplyee = await _employeeRepository.GetEmployeeByCode(employeeCode.Trim());
-            if (existingEmplyee == null)
+            var existingEmployee = await _employeeRepository.GetEmployeeByCode(employeeCode.Trim());
+            if (existingEmployee == null)
             {
                 return null;
             }
-            if (!currentEmployeeId.HasValue || existingEmplyee.EmployeeID != currentEmployeeId.Value)
+            if (!currentEmployeeId.HasValue || existingEmployee.EmployeeID != currentEmployeeId.Value)
             {
                 return new ValidationError(nameof(Employee.EmployeeCode), "Mã nhân viên đã tồn tại");
             }
             return null;
         }
         /// <summary>
-        /// lọc nhân viên theo các tiêu chí như phòng ban, vị trí, mức lương, giới tính và ngày tuyển dụng.
+        /// lọc nhân viên theo các tiêu chí như phòng ban, 
+        /// vị trí, mức lương, giới tính và ngày tuyển dụng.
         /// </summary>
         /// <param name="request"></param>
         /// <returns></returns>
         /// Created By: ntdo (17/04/2026)
         public async Task<ServiceResponse> FilterEmployeesAsync(EmployeeFilterRequest request)
         {
-            if (request.SalaryFrom.HasValue && request.SalaryTo.HasValue && request.SalaryFrom > request.SalaryTo)
-            {
-                return CreateErrorResponse(ResponseCode.BadRequest,
-                        "salaryFrom không được lớn hơn salaryTo",
-                        "salaryFrom không được lớn hơn salaryTo");
-            }
-
-            if (request.HireDateFrom.HasValue && request.HireDateTo.HasValue && request.HireDateFrom > request.HireDateTo)
-            {
-                return CreateErrorResponse(ResponseCode.BadRequest,
-                        "hireDateFrom không được lớn hơn hireDateTo",
-                        "hireDateFrom không được lớn hơn hireDateTo");
-                
-            }
-
-            if (request.Gender.HasValue && request.Gender is < 0 or > 2)
-            {
-                return CreateErrorResponse(ResponseCode.BadRequest,
-                        "gender chỉ nhận các giá trị 0, 1, 2",
-                        "gender chỉ nhận các giá trị 0, 1, 2");
-                
-            }
+            var validationError = ValidateFilterRequest(request);
+            if (validationError != null) return validationError;
 
             var data = await _employeeRepository.FilterEmployeesAsync(request);
-
             return CreateSuccessResponse(data);
         }
 
         public async Task<ServiceResponse> FilterEmployeesPagingAsync(EmployeeFilterRequest request)
         {
-            if (request.SalaryFrom.HasValue && request.SalaryTo.HasValue && request.SalaryFrom > request.SalaryTo)
-            {
-                return CreateErrorResponse(ResponseCode.BadRequest,
-                        "salaryFrom không được lớn hơn salaryTo",
-                        "salaryFrom không được lớn hơn salaryTo");
-            }
-
-            if (request.HireDateFrom.HasValue && request.HireDateTo.HasValue && request.HireDateFrom > request.HireDateTo)
-            {
-                return CreateErrorResponse(ResponseCode.BadRequest,
-                        "hireDateFrom không được lớn hơn hireDateTo",
-                        "hireDateFrom không được lớn hơn hireDateTo");
-            }
-
-            if (request.Gender.HasValue && request.Gender is < 0 or > 2)
-            {
-                return CreateErrorResponse(ResponseCode.BadRequest,
-                        "gender chỉ nhận các giá trị 0, 1, 2",
-                        "gender chỉ nhận các giá trị 0, 1, 2");
-            }
+            var validationError = ValidateFilterRequest(request);
+            if (validationError != null) return validationError;
 
             if (request.PageSize <= 0) request.PageSize = 10;
             if (request.PageIndex <= 0) request.PageIndex = 1;
@@ -239,6 +201,26 @@ namespace FresherMisa2026.Application.Services
                 PageIndex = request.PageIndex,
                 pagingResult.Data
             });
+        }
+
+        private ServiceResponse? ValidateFilterRequest(EmployeeFilterRequest request)
+        {
+            if (request.SalaryFrom.HasValue && request.SalaryTo.HasValue && request.SalaryFrom > request.SalaryTo)
+                return CreateErrorResponse(ResponseCode.BadRequest,
+                    "salaryFrom không được lớn hơn salaryTo",
+                    "salaryFrom không được lớn hơn salaryTo");
+
+            if (request.HireDateFrom.HasValue && request.HireDateTo.HasValue && request.HireDateFrom > request.HireDateTo)
+                return CreateErrorResponse(ResponseCode.BadRequest,
+                    "hireDateFrom không được lớn hơn hireDateTo",
+                    "hireDateFrom không được lớn hơn hireDateTo");
+
+            if (request.Gender.HasValue && request.Gender is < 0 or > 2)
+                return CreateErrorResponse(ResponseCode.BadRequest,
+                    "gender chỉ nhận các giá trị 0, 1, 2",
+                    "gender chỉ nhận các giá trị 0, 1, 2");
+
+            return null;
         }
     }
 }

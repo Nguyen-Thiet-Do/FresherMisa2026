@@ -1,0 +1,73 @@
+using FresherMisa2026.Application.Interfaces;
+using FresherMisa2026.Application.Interfaces.Repositories;
+using FresherMisa2026.Application.Interfaces.Services;
+using FresherMisa2026.Entities;
+using FresherMisa2026.Entities.Candidate;
+using FresherMisa2026.Entities.Candidate.DTO;
+using FresherMisa2026.Entities.Enums;
+using System.Text.RegularExpressions;
+
+namespace FresherMisa2026.Application.Services
+{
+    public class CandidateService : BaseService<Candidate>, ICandidateService
+    {
+        private readonly ICandidateRepository _candidateRepository;
+        private static readonly Regex EmailRegex = new(@"^[^\s@]+@[^\s@]+\.[^\s@]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex PhoneNumberRegex = new(@"^(?:0|\+84)(?:3|5|7|8|9)\d{8}$", RegexOptions.Compiled);
+
+        public CandidateService(
+            IBaseRepository<Candidate> baseRepository,
+            ICandidateRepository candidateRepository) : base(baseRepository)
+        {
+            _candidateRepository = candidateRepository;
+        }
+
+        protected override List<ValidationError> ValidateCustom(Candidate candidate)
+        {
+            var errors = new List<ValidationError>();
+
+            if (candidate.DateOfBirth.HasValue && candidate.DateOfBirth.Value > DateTime.Now)
+                errors.Add(new ValidationError(nameof(Candidate.DateOfBirth), "Ngày sinh không được lớn hơn ngày hiện tại"));
+
+            if (!string.IsNullOrWhiteSpace(candidate.Email) && !EmailRegex.IsMatch(candidate.Email.Trim()))
+                errors.Add(new ValidationError(nameof(Candidate.Email), "Email không đúng định dạng"));
+
+            if (!string.IsNullOrWhiteSpace(candidate.PhoneNumber) && !PhoneNumberRegex.IsMatch(candidate.PhoneNumber.Trim()))
+                errors.Add(new ValidationError(nameof(Candidate.PhoneNumber), "Số điện thoại không đúng định dạng"));
+
+            if (candidate.WorkStartDate.HasValue && candidate.WorkEndDate.HasValue && candidate.WorkStartDate > candidate.WorkEndDate)
+                errors.Add(new ValidationError(nameof(Candidate.WorkEndDate), "Ngày kết thúc phải sau ngày bắt đầu làm việc"));
+
+            return errors;
+        }
+
+        public async Task<ServiceResponse> FilterCandidatesPagingAsync(CandidateFilterRequest request)
+        {
+            var validationError = ValidateFilterRequest(request);
+            if (validationError != null) return validationError;
+
+            if (request.PageSize <= 0) request.PageSize = 10;
+            if (request.PageIndex <= 0) request.PageIndex = 1;
+
+            var pagingResult = await _candidateRepository.FilterCandidatesPagingAsync(request);
+
+            return CreateSuccessResponse(new
+            {
+                pagingResult.Total,
+                PageSize = request.PageSize,
+                PageIndex = request.PageIndex,
+                pagingResult.Data
+            });
+        }
+
+        private ServiceResponse? ValidateFilterRequest(CandidateFilterRequest request)
+        {
+            if (request.HiringDateFrom.HasValue && request.HiringDateTo.HasValue && request.HiringDateFrom > request.HiringDateTo)
+                return CreateErrorResponse(ResponseCode.BadRequest,
+                    "hiringDateFrom không được lớn hơn hiringDateTo",
+                    "hiringDateFrom không được lớn hơn hiringDateTo");
+
+            return null;
+        }
+    }
+}

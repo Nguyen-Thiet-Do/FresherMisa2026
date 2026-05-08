@@ -20,7 +20,8 @@ namespace FresherMisa2026.Infrastructure
             services.AddScoped<IDepartmentRepository, DepartmentRepository>();
             services.AddScoped<IPositionRepository, PositionRepository>();
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
-            // đăng ký cache 
+            services.AddScoped<ICandidateRepository, CandidateRepository>();
+            // đăng ký cache
             services.AddMemoryCache();
             return services;
         }

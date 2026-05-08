@@ -103,7 +103,7 @@ Console.WriteLine("After run middleware");
 /// Lấy tất cả bản ghi
 /// </summary>
 /// <returns>Danh sách bản ghi</returns>
-/// CREATED BY: DVHAI 11/07/2026
+/// CREATED BY:      11/07/2026
 public async Task<IEnumerable<TEntity>> GetEntities()
 ```
 

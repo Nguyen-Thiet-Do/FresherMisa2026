@@ -10,7 +10,7 @@ using System.Text;
 
 namespace FresherMisa2026.Application.Services
 {
-    public class DepartmentService : BaseService<Department>, IDepartmentSerice
+    public class DepartmentService : BaseService<Department>, IDepartmentService
     {
         private readonly IDepartmentRepository _deptRepository;
         private readonly IEmployeeRepository _employeeRepository;

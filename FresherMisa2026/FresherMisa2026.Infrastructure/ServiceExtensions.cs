@@ -1,6 +1,8 @@
 using FresherMisa2026.Application.Interfaces;
 using FresherMisa2026.Application.Interfaces.Repositories;
+using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Infrastructure.Repositories;
+using FresherMisa2026.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
@@ -21,6 +23,9 @@ namespace FresherMisa2026.Infrastructure
             services.AddScoped<IPositionRepository, PositionRepository>();
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
             services.AddScoped<ICandidateRepository, CandidateRepository>();
+
+            services.AddScoped<IFileService, FileService>();
+
             // đăng ký cache
             services.AddMemoryCache();
             return services;

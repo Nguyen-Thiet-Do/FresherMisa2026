@@ -1,5 +1,6 @@
 using FresherMisa2026.Application;
 using FresherMisa2026.Application.Extensions;
+using FresherMisa2026.Entities.FileUpload;
 using FresherMisa2026.Infrastructure;
 using FresherMisa2026.WebAPI.Middlewares;
 
@@ -21,7 +22,17 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddApplicationDI();
 builder.Services.AddInfrastructure();
 
+// File upload — BasePath được resolve từ WebRootPath tại runtime
+builder.Services.Configure<FileUploadSettings>(options =>
+{
+    builder.Configuration.GetSection("FileUpload").Bind(options);
+    options.BasePath = builder.Environment.WebRootPath;
+});
+
 var app = builder.Build();
+
+// Tạo thư mục uploads nếu chưa tồn tại
+Directory.CreateDirectory(Path.Combine(app.Environment.WebRootPath, "uploads"));
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -33,6 +44,9 @@ if (app.Environment.IsDevelopment())
 
 //Config sql load
 SQLExtension.Initialize();
+
+// Serve static files (wwwroot/uploads/...)
+app.UseStaticFiles();
 
 //Middlewares
 app.UseMiddleware<GlobalExceptionMiddleware>();

@@ -43,7 +43,8 @@ namespace FresherMisa2026.Application.Services
             IsSuccess = false,
             Code = (int)code,
             DevMessage = devMessage,
-            Data = userMessage
+            Data = userMessage,
+            UserMessage = userMessage
         };
 
         private static PropertyInfo[] GetCachedProperties(Type entityType)
@@ -116,7 +117,7 @@ namespace FresherMisa2026.Application.Services
             if (rowAffects > 0)
             {
                 //3. Xóa thành công thì làm gì
-                AfterDelete();
+                AfterDelete(existingEntity);
                 return CreateSuccessResponse(rowAffects);
             }
 
@@ -291,7 +292,11 @@ namespace FresherMisa2026.Application.Services
 
             var response = new PagingResponse<TEntity>
             {
+
                 Total = total,
+                PageSize = pagingRequest.PageSize,
+                CurrentPage = pagingRequest.PageIndex,
+                PageCount = (long)Math.Ceiling((double)total / pagingRequest.PageSize),
                 Data = data.ToList()
             };
 
@@ -386,9 +391,9 @@ namespace FresherMisa2026.Application.Services
 
         #region Virtual method - Override methods
         /// <summary>
-        /// Xóa thành công
+        /// Xóa thành công — override để xử lý cleanup (ví dụ: xóa file)
         /// </summary>
-        protected virtual void AfterDelete()
+        protected virtual void AfterDelete(TEntity entity)
         {
         }
 

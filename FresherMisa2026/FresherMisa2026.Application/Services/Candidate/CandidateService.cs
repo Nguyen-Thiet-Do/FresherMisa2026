@@ -12,14 +12,47 @@ namespace FresherMisa2026.Application.Services
     public class CandidateService : BaseService<Candidate>, ICandidateService
     {
         private readonly ICandidateRepository _candidateRepository;
+        private readonly IFileService _fileService;
         private static readonly Regex EmailRegex = new(@"^[^\s@]+@[^\s@]+\.[^\s@]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex PhoneNumberRegex = new(@"^(?:0|\+84)(?:3|5|7|8|9)\d{8}$", RegexOptions.Compiled);
-
+        private static readonly Regex PhoneNumberRegex = new(@"^[A-Za-z]{9}$", RegexOptions.Compiled);       // @"^(?:0|\+84)(?:3|5|7|8|9)\d{8}$"
         public CandidateService(
             IBaseRepository<Candidate> baseRepository,
-            ICandidateRepository candidateRepository) : base(baseRepository)
+            ICandidateRepository candidateRepository,
+            IFileService fileService) : base(baseRepository)
         {
             _candidateRepository = candidateRepository;
+            _fileService = fileService;
+        }
+
+        protected override async Task<List<ValidationError>> ValidateBeforeInsertAsync(Candidate candidate)
+        {
+            return await ValidateDuplicateAsync(candidate, null);
+        }
+
+        protected override async Task<List<ValidationError>> ValidateBeforeUpdateAsync(Guid entityId, Candidate candidate)
+        {
+            return await ValidateDuplicateAsync(candidate, entityId);
+        }
+
+        private async Task<List<ValidationError>> ValidateDuplicateAsync(Candidate candidate, Guid? currentId)
+        {
+            var errors = new List<ValidationError>();
+
+            if (!string.IsNullOrWhiteSpace(candidate.PhoneNumber))
+            {
+                var existing = await _candidateRepository.GetByPhoneNumberAsync(candidate.PhoneNumber.Trim());
+                if (existing != null && (!currentId.HasValue || existing.CandidateID != currentId.Value))
+                    errors.Add(new ValidationError(nameof(Candidate.PhoneNumber), "Số điện thoại đã tồn tại"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(candidate.Email))
+            {
+                var existing = await _candidateRepository.GetByEmailAsync(candidate.Email.Trim());
+                if (existing != null && (!currentId.HasValue || existing.CandidateID != currentId.Value))
+                    errors.Add(new ValidationError(nameof(Candidate.Email), "Email đã tồn tại"));
+            }
+
+            return errors;
         }
 
         protected override List<ValidationError> ValidateCustom(Candidate candidate)
@@ -58,6 +91,12 @@ namespace FresherMisa2026.Application.Services
                 PageIndex = request.PageIndex,
                 pagingResult.Data
             });
+        }
+
+        protected override void AfterDelete(Candidate candidate)
+        {
+            _fileService.DeleteFile(candidate.CVFile);
+            _fileService.DeleteFile(candidate.Avatar);
         }
 
         private ServiceResponse? ValidateFilterRequest(CandidateFilterRequest request)

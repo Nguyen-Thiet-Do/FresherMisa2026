@@ -10,5 +10,15 @@ namespace FresherMisa2026.Application.Interfaces.Repositories
         /// Lọc ứng viên theo các tiêu chí và phân trang
         /// </summary>
         Task<PagingResponse<Candidate>> FilterCandidatesPagingAsync(CandidateFilterRequest request);
+
+        /// <summary>
+        /// Lấy ứng viên theo số điện thoại
+        /// </summary>
+        Task<Candidate?> GetByPhoneNumberAsync(string phoneNumber);
+
+        /// <summary>
+        /// Lấy ứng viên theo email
+        /// </summary>
+        Task<Candidate?> GetByEmailAsync(string email);
     }
 }

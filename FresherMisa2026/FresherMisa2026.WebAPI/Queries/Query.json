@@ -3,5 +3,7 @@
   "Position.GetByCode": "SELECT * FROM Position WHERE PositionCode=@PositionCode",
   "Employee.GetByCode": "SELECT * FROM Employee WHERE EmployeeCode=@EmployeeCode",
   "Employee.GetByDepartmentId": "SELECT * FROM Employee WHERE DepartmentID=@DepartmentID ",
-  "Employee.GetByPositionId": "SELECT * FROM Employee WHERE PositionID=@PositionID "
+  "Employee.GetByPositionId": "SELECT * FROM Employee WHERE PositionID=@PositionID ",
+  "Candidate.GetByPhoneNumber": "SELECT * FROM Candidate WHERE PhoneNumber = @PhoneNumber",
+  "Candidate.GetByEmail": "SELECT * FROM Candidate WHERE Email = @Email"
 }

@@ -40,7 +40,7 @@ WebAPI → Infrastructure → Application → Entities
 
 ### Request flow
 
-`Controller` → `Service.InsertAsync/UpdateAsync` → validate (`[IRequired]` + `ValidateCustom`) → `Repository.InsertAsync` → gọi stored procedure → MySQL
+`Controller` → `Service.InsertAsync/UpdateAsync` → validate (`[IRequired]` + `ValidateCustom`) → `Repository.InsertAsync` → `ValidateUniqueColumnsAsync` (pre-check trùng) → gọi stored procedure → MySQL
 
 ### BaseController — endpoints tự động
 
@@ -86,6 +86,22 @@ Tham số key khi xóa: `@v_{KeyName}` (ví dụ: `@v_EmployeeID`).
 
 `Proc_{TableName}_FilterPaging` (generic paging) nhận: `v_pageIndex`, `v_pageSize`, `v_search`, `v_sort`, `v_searchFields` (JSON). Phải trả **2 result sets**: data rows trước, COUNT sau.
 
+### ConfigTable attribute và MethodExtensions (`Entities/Extensions/`)
+
+`[ConfigTable(tableName, hasDeletedColumn, uniqueColumns)]` trên entity class điều khiển hành vi của `BaseRepository`:
+
+| Tham số | Kiểu | Mô tả |
+|---|---|---|
+| `tableName` | `string` | Tên bảng MySQL — **bắt buộc**, throw `ArgumentException` nếu trống |
+| `hasDeletedColumn` | `bool` | `true` → tự động thêm `WHERE IsDeleted = FALSE` vào mọi GET query |
+| `uniqueColumns` | `string` | Tên cột unique, cách nhau bằng `,` (ví dụ: `"EmployeeCode"`) |
+
+`MethodExtensions` cung cấp extension methods: `GetTableName()`, `GetHasDeletedColumn()`, `GetUniqueColumns()`, `GetKeyName()`, `GetColumnDisplayName()`. Kết quả `GetKeyName()` được cache vào field `_keyName` trong constructor của `BaseRepository` — không gọi reflection lặp lại.
+
+**`ValidateUniqueColumnsAsync(entity, excludeId?)`** — được gọi tự động trong `InsertAsync` và `UpdateAsync` trước khi mở transaction. Đọc `uniqueColumns` từ `[ConfigTable]`, query `SELECT COUNT(*)` cho từng cột, throw `DuplicateEntityException` nếu trùng. MySqlException 1062 handler vẫn giữ như safety net cho race condition.
+
+**Khi thêm entity có UNIQUE constraint:** khai báo cột trong `uniqueColumns` của `[ConfigTable]` và gắn `[Display(Name = "Tên tiếng Việt")]` lên property đó — cả `ValidateUniqueColumnsAsync` và `TranslateMySqlException` đều dùng display name này cho error message.
+
 ### Caching
 
 - Cache 5 phút qua `IMemoryCache`
@@ -111,7 +127,7 @@ MySqlException được dịch sang domain exception tại `BaseRepository.Trans
 
 Middleware chỉ xử lý domain exception, không phụ thuộc MySqlConnector.
 
-**Khi thêm entity mới có UNIQUE constraint:** cập nhật `_uniqueKeyFriendlyNames` trong `BaseRepository` để message lỗi 409 hiển thị tên tiếng Việt thay vì tên raw constraint.
+`TranslateMySqlException` parse tên constraint `UQ_{ColumnName}` → gọi `GetColumnDisplayName()` để lấy tên tiếng Việt từ `[Display(Name = "...")]` trên entity property.
 
 ### ServiceResponse
 
@@ -127,7 +143,7 @@ Khi validation lỗi: `data` chứa chuỗi lỗi join bằng `"; "`, `code = 40
 2. **DTO:** `Entities/{Name}/DTO/{Name}FilterRequest.cs`
 3. **Interfaces:** `Application/Interfaces/Repositories/I{Name}Repository.cs` và `Application/Interfaces/Services/I{Name}Service.cs`
 4. **Repository:** `Infrastructure/Repositories/{Name}/{Name}Repository.cs` — gọi custom stored procs
-5. **Service:** `Application/Services/{Name}/{Name}Service.cs` — override `ValidateCustom`, `ValidateBeforeInsertAsync`, `ValidateBeforeUpdateAsync` nếu cần
+5. **Service:** `Application/Services/{Name}/{Name}Service.cs` — override `ValidateCustom`, `ValidateBeforeInsertAsync`, `ValidateBeforeUpdateAsync` nếu cần. Lifecycle hooks: `OnAfterInsert`, `OnAfterUpdate`, `OnAfterDelete`, `AfterDelete` (cleanup file...), `ValidateBeforeDeleteAsync` + `GetDeleteValidationMessageAsync` (block xóa)
 6. **Controller:** `WebAPI/Controllers/{Name}sController.cs` — kế thừa `BaseController<{Name}>`
 7. **SQL:** `WebAPI/Queries/{name}_migration.sql` — tạo bảng + 5 stored procs (`Proc_Insert`, `Proc_Update`, `Proc_DeleteById`, `Proc_{Name}_FilterPaging`, custom filter proc nếu có)
 8. **DI:** Đăng ký trong `Application/ServiceExtensions.cs` và `Infrastructure/ServiceExtensions.cs`

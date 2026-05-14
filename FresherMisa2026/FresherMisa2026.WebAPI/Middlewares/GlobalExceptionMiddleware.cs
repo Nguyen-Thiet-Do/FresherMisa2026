@@ -1,8 +1,7 @@
 ﻿using FresherMisa2026.Entities;
-using MySqlConnector;
+using FresherMisa2026.Entities.Exceptions;
 using System.Net;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace FresherMisa2026.WebAPI.Middlewares
 {
@@ -10,11 +9,9 @@ namespace FresherMisa2026.WebAPI.Middlewares
     {
         private readonly RequestDelegate _next;
 
-        private static readonly Dictionary<string, string> _uniqueKeyFriendlyNames = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly JsonSerializerOptions _jsonOptions = new()
         {
-            { "UQ_EmployeeCode",   "Mã nhân viên" },
-            { "UQ_DepartmentCode", "Mã phòng ban" },
-            { "UQ_PositionCode",   "Mã chức vụ" },
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
 
         public GlobalExceptionMiddleware(RequestDelegate next)
@@ -52,17 +49,10 @@ namespace FresherMisa2026.WebAPI.Middlewares
                     statusCode = (int)HttpStatusCode.BadRequest;
                     userMessage = exception.Message;
                     break;
-                case MySqlException mySqlException when mySqlException.Number == 1062:
+                case DuplicateEntityException:
                     statusCode = (int)HttpStatusCode.Conflict;
-                    userMessage = BuildDuplicateKeyMessage(mySqlException.Message);
-                    devMessage = mySqlException.Message;
-                    break;
-                case MySqlException mySqlException when mySqlException.SqlState == "45000":
-                    statusCode = mySqlException.Message.Contains("không tồn tại", StringComparison.OrdinalIgnoreCase)
-                        ? (int)HttpStatusCode.NotFound
-                        : (int)HttpStatusCode.BadRequest;
-                    userMessage = mySqlException.Message;
-                    devMessage = mySqlException.Message;
+                    userMessage = exception.Message;
+                    devMessage = exception.Message;
                     break;
             }
 
@@ -76,35 +66,11 @@ namespace FresherMisa2026.WebAPI.Middlewares
                 DevMessage = devMessage
             };
 
-            var jsonResponse = JsonSerializer.Serialize(response);
+            var jsonResponse = JsonSerializer.Serialize(response, _jsonOptions);
 
             return context.Response.WriteAsync(jsonResponse);
         }
 
-        /// <summary>
-        /// Parse message MySQL 1062 để build message
-        /// MySQL format: "Duplicate entry 'EMP001' for key 'employee.UQ_EmployeeCode'"
-        /// </summary>
-        private static string BuildDuplicateKeyMessage(string mysqlMessage)
-        {
-            var match = Regex.Match(
-                mysqlMessage,
-                @"Duplicate entry '(.+?)' for key '(.+?)'",
-                RegexOptions.IgnoreCase);
-
-            if (!match.Success)
-                return "Dữ liệu đã tồn tại trong hệ thống";
-
-            var entryValue = match.Groups[1].Value;
-            // key có thể có dạng 'table.UQ_IndexName' → chỉ lấy phần sau dấu chấm
-            var rawKeyName = match.Groups[2].Value.Split('.').Last();
-
-            var fieldName = _uniqueKeyFriendlyNames.TryGetValue(rawKeyName, out var friendly)
-                ? friendly
-                : rawKeyName;
-
-            return $"{fieldName} '{entryValue}' đã tồn tại";
-        }
     }
 }
 

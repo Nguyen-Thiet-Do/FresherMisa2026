@@ -2,6 +2,7 @@
 using FresherMisa2026.Application.Interfaces;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Department;
+using FresherMisa2026.Entities.Exceptions;
 using FresherMisa2026.Entities.Extensions;
 using FresherMisa2026.Entities.Settings;
 using Microsoft.Extensions.Caching.Memory;
@@ -16,6 +17,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace FresherMisa2026.Infrastructure.Repositories
 {
@@ -26,6 +28,39 @@ namespace FresherMisa2026.Infrastructure.Repositories
     /// Created By: dvhai (09/04/2026)
     public class BaseRepository<TEntity> : IBaseRepository<TEntity> where TEntity : BaseModel
     {
+        private Exception TranslateMySqlException(MySqlException ex)
+        {
+            if (ex.Number == 1062)
+            {
+                var match = Regex.Match(ex.Message, @"Duplicate entry '(.+?)' for key '(.+?)'", RegexOptions.IgnoreCase);
+                if (!match.Success)
+                    return new DuplicateEntityException("Dữ liệu đã tồn tại trong hệ thống");
+
+                var entryValue = match.Groups[1].Value;
+                var rawKeyName = match.Groups[2].Value.Split('.').Last(); // "UQ_EmployeeCode"
+                var columnName = rawKeyName.StartsWith("UQ_", StringComparison.OrdinalIgnoreCase)
+                    ? rawKeyName[3..]
+                    : rawKeyName; // "EmployeeCode"
+                var fieldName = _modelType.GetColumnDisplayName(columnName); // "Mã nhân viên"
+                return new DuplicateEntityException($"{fieldName} '{entryValue}' đã tồn tại");
+            }
+
+            if (ex.Number == 1451)
+                return new InvalidOperationException("Không thể xóa vì dữ liệu đang được sử dụng ở nơi khác");
+
+            if (ex.Number == 1452)
+                return new ArgumentException("Dữ liệu liên kết không tồn tại trong hệ thống");
+
+            if (ex.SqlState == "45000")
+            {
+                return ex.Message.Contains("không tồn tại", StringComparison.OrdinalIgnoreCase)
+                    ? new KeyNotFoundException(ex.Message)
+                    : new InvalidOperationException(ex.Message);
+            }
+
+            return ex;
+        }
+
         //Properties
         string _connectionString = string.Empty;
         IConfiguration _configuration;
@@ -215,6 +250,11 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     _logger.LogInformation("[XÓA CACHE] DeleteAsync - Bảng: {Table} | ID: {Id} | Đã xóa cache: {Key1}, {Key2}",
                         _tableName, entityId, $"{_tableName}_all", $"{_tableName}_{entityId}");
                 }
+                catch (MySqlException ex)
+                {
+                    transaction.Rollback();
+                    throw TranslateMySqlException(ex);
+                }
                 catch
                 {
                     transaction.Rollback();
@@ -255,6 +295,11 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     _cache.Remove($"{_tableName}_all");
                     _logger.LogInformation("[XÓA CACHE] InsertAsync - Bảng: {Table} | Đã xóa cache: {Key}",
                         _tableName, $"{_tableName}_all");
+                }
+                catch (MySqlException ex)
+                {
+                    transaction.Rollback();
+                    throw TranslateMySqlException(ex);
                 }
                 catch
                 {
@@ -298,6 +343,11 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     _cache.Remove($"{_tableName}_{entityId}");
                     _logger.LogInformation("[XÓA CACHE] UpdateAsync - Bảng: {Table} | ID: {Id} | Đã xóa cache: {Key1}, {Key2}",
                         _tableName, entityId, $"{_tableName}_all", $"{_tableName}_{entityId}");
+                }
+                catch (MySqlException ex)
+                {
+                    transaction.Rollback();
+                    throw TranslateMySqlException(ex);
                 }
                 catch
                 {

@@ -99,12 +99,19 @@ Tham số key khi xóa: `@v_{KeyName}` (ví dụ: `@v_EmployeeID`).
 
 ### Exception handling (GlobalExceptionMiddleware)
 
-| Exception | HTTP |
-|---|---|
-| `KeyNotFoundException` | 404 |
-| `ArgumentException`, `InvalidOperationException` | 400 |
-| MySqlException 1062 (duplicate key) | 409 |
-| MySqlException SQLSTATE 45000 (signal từ SP) | 404 nếu chứa "không tồn tại", ngược lại 400 |
+MySqlException được dịch sang domain exception tại `BaseRepository.TranslateMySqlException()` trước khi bubble lên:
+
+| MySqlException | Domain Exception | HTTP |
+|---|---|---|
+| 1062 (duplicate key) | `DuplicateEntityException` | 409 |
+| 1451 (FK — xóa cha còn con) | `InvalidOperationException` | 400 |
+| 1452 (FK — insert con thiếu cha) | `ArgumentException` | 400 |
+| SQLSTATE 45000 chứa "không tồn tại" | `KeyNotFoundException` | 404 |
+| SQLSTATE 45000 khác | `InvalidOperationException` | 400 |
+
+Middleware chỉ xử lý domain exception, không phụ thuộc MySqlConnector.
+
+**Khi thêm entity mới có UNIQUE constraint:** cập nhật `_uniqueKeyFriendlyNames` trong `BaseRepository` để message lỗi 409 hiển thị tên tiếng Việt thay vì tên raw constraint.
 
 ### ServiceResponse
 

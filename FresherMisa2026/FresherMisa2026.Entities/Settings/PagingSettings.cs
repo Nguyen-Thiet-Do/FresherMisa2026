@@ -1,3 +1,4 @@
+
 namespace FresherMisa2026.Entities.Settings
 {
     public class PagingSettings

@@ -65,6 +65,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         string _connectionString = string.Empty;
         IConfiguration _configuration;
         protected string _tableName;
+        protected string _keyName;
         public Type _modelType = null;
         private readonly CacheSettings _cacheSettings;
 
@@ -81,6 +82,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
             _connectionString = _configuration.GetConnectionString("DefaultConnection")!;
             _modelType = typeof(TEntity);
             _tableName = _modelType.GetTableName();
+            _keyName = _modelType.GetKeyName();
         }
         protected MySqlConnection CreateConnection()
         {
@@ -161,8 +163,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
             var allCacheKey = $"{_tableName}_all";
             if (_cache.TryGetValue(allCacheKey, out IEnumerable<TEntity> allCached))
             {
-                var keyName = _modelType.GetKeyName();
-                var keyProp = typeof(TEntity).GetProperty(keyName);
+                var keyProp = typeof(TEntity).GetProperty(_keyName);
                 var found = allCached.FirstOrDefault(e => keyProp?.GetValue(e) is Guid id && id == entityId);
                 if (found != null)
                 {
@@ -195,9 +196,9 @@ namespace FresherMisa2026.Infrastructure.Repositories
             var query = new StringBuilder($"select * from {_tableName}");
             int whereCount = 0;
 
-            Func<StringBuilder, bool> AppendWhere = (query) => { if (whereCount == 0) query.Append(" where "); return true; };
+            Func<StringBuilder, bool> AppendWhere = (query) => { query.Append(whereCount == 0 ? " WHERE " : " AND "); return true; };
 
-            var primaryKey = _modelType.GetKeyName();
+            var primaryKey = _keyName;
 
             if (primaryKey != null)
             {
@@ -235,11 +236,8 @@ namespace FresherMisa2026.Infrastructure.Repositories
             {
                 try
                 {
-                    //1. Lấy tên của khóa chính
-                    var keyName = _modelType.GetKeyName();
-
                     var dynamicParams = new DynamicParameters();
-                    dynamicParams.Add($"@v_{keyName}", entityId);
+                    dynamicParams.Add($"@v_{_keyName}", entityId);
 
                     //2. Kết nối tới CSDL:
                     rowAffects = await connection.ExecuteAsync($"Proc_Delete{_tableName}ById", param: dynamicParams, transaction: transaction, commandType: CommandType.StoredProcedure);
@@ -275,6 +273,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// CREATED BY: DVHAI (11/07/2021)
         public async Task<int> InsertAsync(TEntity entity)
         {
+            await ValidateUniqueColumnsAsync(entity);
             var rowAffects = 0;
             using var connection = CreateConnection();
             await connection.OpenAsync();
@@ -321,6 +320,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// CREATED BY: DVHAI (11/07/2021)
         public async Task<int> UpdateAsync(Guid entityId, TEntity entity)
         {
+            await ValidateUniqueColumnsAsync(entity, entityId);
             var rowAffects = 0;
             using var connection = CreateConnection();
             await connection.OpenAsync();
@@ -402,8 +402,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
         private void EnsurePrimaryKeyForInsert(TEntity entity)
         {
-            var keyName = _modelType.GetKeyName();
-            var keyProperty = entity.GetType().GetProperty(keyName);
+            var keyProperty = entity.GetType().GetProperty(_keyName);
 
             if (keyProperty == null)
             {
@@ -430,8 +429,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
         private void SetPrimaryKeyValue(TEntity entity, Guid entityId)
         {
-            var keyName = _modelType.GetKeyName();
-            var keyProperty = entity.GetType().GetProperty(keyName);
+            var keyProperty = entity.GetType().GetProperty(_keyName);
 
             if (keyProperty == null)
             {
@@ -467,6 +465,40 @@ namespace FresherMisa2026.Infrastructure.Repositories
             }
 
             return parameters;
+        }
+
+        private async Task ValidateUniqueColumnsAsync(TEntity entity, Guid? excludeId = null)
+        {
+            var uniqueColumnsRaw = _modelType.GetUniqueColumns();
+            if (string.IsNullOrWhiteSpace(uniqueColumnsRaw)) return;
+
+            var uniqueColumns = uniqueColumnsRaw
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(c => c.Trim())
+                .Where(c => !string.IsNullOrEmpty(c));
+
+            using var connection = CreateConnection();
+            await connection.OpenAsync();
+
+            foreach (var column in uniqueColumns)
+            {
+                var prop = _modelType.GetProperty(column);
+                if (prop == null) continue;
+
+                var value = prop.GetValue(entity);
+                if (value == null) continue;
+
+                var sql = excludeId.HasValue
+                    ? $"SELECT COUNT(*) FROM {_tableName} WHERE {column} = @value AND {_keyName} != @excludeId"
+                    : $"SELECT COUNT(*) FROM {_tableName} WHERE {column} = @value";
+
+                var count = await connection.ExecuteScalarAsync<int>(sql, new { value, excludeId = excludeId?.ToString() });
+                if (count > 0)
+                {
+                    var displayName = _modelType.GetColumnDisplayName(column);
+                    throw new DuplicateEntityException($"{displayName} '{value}' đã tồn tại");
+                }
+            }
         }
 
         #endregion

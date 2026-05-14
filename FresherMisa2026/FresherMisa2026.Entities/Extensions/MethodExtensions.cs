@@ -15,14 +15,10 @@ namespace FresherMisa2026.Entities.Extensions
         public static string GetTableName(this Type type)
         {
             var configTable = GetConfigTable(type);
-            if (configTable == null)
+            if (string.IsNullOrWhiteSpace(configTable.TableName))
             {
-                if (string.IsNullOrWhiteSpace(type.Name))
-                {
-                    throw new ArgumentException($"{nameof(type)} không có tên table");
-                }
+                throw new ArgumentException($"{type.Name} chưa khai báo [ConfigTable] hoặc TableName bị trống");
             }
-            ;
             return configTable.TableName;
         }
 

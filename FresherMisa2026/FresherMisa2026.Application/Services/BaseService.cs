@@ -116,8 +116,8 @@ namespace FresherMisa2026.Application.Services
             
             if (rowAffects > 0)
             {
-                //3. Xóa thành công thì làm gì
                 AfterDelete(existingEntity);
+                OnAfterDelete(entityId, rowAffects);
                 return CreateSuccessResponse(rowAffects);
             }
 
@@ -213,6 +213,7 @@ namespace FresherMisa2026.Application.Services
             if (errors.Count == 0)
             {
                 var result = await _baseRepository.InsertAsync(entity);
+                OnAfterInsert(entity, result);
                 return CreateSuccessResponse(result);
             }
 
@@ -257,6 +258,7 @@ namespace FresherMisa2026.Application.Services
                 int rowAffects = await _baseRepository.UpdateAsync(entityId, entity);
                 if (rowAffects > 0)
                 {
+                    OnAfterUpdate(entityId, entity, rowAffects);
                     return CreateSuccessResponse(rowAffects);
                 }
                 return CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi để cập nhật");
@@ -306,86 +308,19 @@ namespace FresherMisa2026.Application.Services
 
         #region Virtual method - Lifecycle hooks
         /// <summary>
-        /// Trước khi lấy danh sách entity
+        /// Sau khi thêm mới thành công — override để xử lý side effect (audit log, notification...)
         /// </summary>
-        protected virtual void OnBeforeGetEntities() { }
-
-        /// <summary>
-        /// Sau khi lấy danh sách entity
-        /// </summary>
-        /// <param name="entities">Danh sách entity</param>
-        protected virtual void OnAfterGetEntities(IEnumerable<TEntity> entities) { }
-
-        /// <summary>
-        /// Trước khi lấy entity theo Id
-        /// </summary>
-        /// <param name="entityId">Id entity</param>
-        protected virtual void OnBeforeGetById(Guid entityId) { }
-
-        /// <summary>
-        /// Sau khi lấy entity theo Id
-        /// </summary>
-        /// <param name="entity">Entity lấy được</param>
-        protected virtual void OnAfterGetById(TEntity? entity) { }
-
-        /// <summary>
-        /// Trước khi thêm mới entity
-        /// </summary>
-        /// <param name="entity">Entity cần thêm</param>
-        protected virtual void OnBeforeInsert(TEntity entity) { }
-
-        /// <summary>
-        /// Sau khi thêm mới entity
-        /// </summary>
-        /// <param name="entity">Entity đã thêm</param>
-        /// <param name="result">Kết quả</param>
         protected virtual void OnAfterInsert(TEntity entity, int result) { }
 
         /// <summary>
-        /// Trước khi cập nhật entity
+        /// Sau khi cập nhật thành công — override để xử lý side effect (audit log, cache...)
         /// </summary>
-        /// <param name="entityId">Id entity</param>
-        /// <param name="entity">Entity cập nhật</param>
-        protected virtual void OnBeforeUpdate(Guid entityId, TEntity entity) { }
-
-        /// <summary>
-        /// Sau khi cập nhật entity
-        /// </summary>
-        /// <param name="entityId">Id entity</param>
-        /// <param name="entity">Entity đã cập nhật</param>
-        /// <param name="result">Kết quả</param>
         protected virtual void OnAfterUpdate(Guid entityId, TEntity entity, int result) { }
 
         /// <summary>
-        /// Trước khi xóa entity
+        /// Sau khi xóa thành công — override để xử lý side effect (audit log...)
         /// </summary>
-        /// <param name="entityId">Id entity</param>
-        protected virtual void OnBeforeDelete(Guid entityId) { }
-
-        /// <summary>
-        /// Sau khi xóa entity
-        /// </summary>
-        /// <param name="entityId">Id entity</param>
-        /// <param name="result">Kết quả</param>
         protected virtual void OnAfterDelete(Guid entityId, int result) { }
-
-        /// <summary>
-        /// Trước khi lấy danh sách phân trang
-        /// </summary>
-        /// <param name="pagingRequest">Thông tin phân trang</param>
-        protected virtual void OnBeforeGetFilterPaging(PagingRequest pagingRequest) { }
-
-        /// <summary>
-        /// Sau khi lấy danh sách phân trang
-        /// </summary>
-        /// <param name="response">Kết quả phân trang</param>
-        protected virtual void OnAfterGetFilterPaging(PagingResponse<TEntity> response) { }
-
-        /// <summary>
-        /// Khi validation thất bại
-        /// </summary>
-        /// <param name="errors">Danh sách lỗi</param>
-        protected virtual void OnValidationFailed(List<ValidationError> errors) { }
 
         #endregion
 

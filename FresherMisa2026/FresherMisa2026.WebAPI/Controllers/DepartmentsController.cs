@@ -4,7 +4,9 @@ using FresherMisa2026.Application.Services;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Department;
 using FresherMisa2026.Entities.Enums;
+using FresherMisa2026.Entities.Settings;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace FresherMisa2026.WebAPI.Controllers
 {
@@ -14,7 +16,8 @@ namespace FresherMisa2026.WebAPI.Controllers
         private readonly IDepartmentService _departmentService;
 
         public DepartmentsController(
-            IDepartmentService departmentService) : base(departmentService)
+            IDepartmentService departmentService,
+            IOptions<PagingSettings> pagingSettings) : base(departmentService, pagingSettings)
         {
             _departmentService = departmentService;
         }

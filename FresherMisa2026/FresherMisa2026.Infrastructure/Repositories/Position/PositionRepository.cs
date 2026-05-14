@@ -2,16 +2,18 @@ using Dapper;
 using FresherMisa2026.Application.Extensions;
 using FresherMisa2026.Application.Interfaces.Repositories;
 using FresherMisa2026.Entities.Position;
+using FresherMisa2026.Entities.Settings;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Collections.Generic;
 
 namespace FresherMisa2026.Infrastructure.Repositories
 {
     public class PositionRepository : BaseRepository<Position>, IPositionRepository
     {
-        public PositionRepository(IConfiguration configuration, IMemoryCache cache, ILogger<BaseRepository<Position>> logger) : base(configuration, cache, logger)
+        public PositionRepository(IConfiguration configuration, IMemoryCache cache, ILogger<BaseRepository<Position>> logger, IOptions<CacheSettings> cacheSettings) : base(configuration, cache, logger, cacheSettings)
         {
         }
 

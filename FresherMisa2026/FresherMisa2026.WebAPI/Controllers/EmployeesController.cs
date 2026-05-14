@@ -2,7 +2,9 @@ using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Employee;
 using FresherMisa2026.Entities.Employee.DTO;
+using FresherMisa2026.Entities.Settings;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace FresherMisa2026.WebAPI.Controllers
 {
@@ -12,7 +14,8 @@ namespace FresherMisa2026.WebAPI.Controllers
         private readonly IEmployeeService _employeeService;
 
         public EmployeesController(
-            IEmployeeService employeeService) : base(employeeService)
+            IEmployeeService employeeService,
+            IOptions<PagingSettings> pagingSettings) : base(employeeService, pagingSettings)
         {
             _employeeService = employeeService;
         }

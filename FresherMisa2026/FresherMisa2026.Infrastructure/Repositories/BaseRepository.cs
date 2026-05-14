@@ -3,9 +3,11 @@ using FresherMisa2026.Application.Interfaces;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Department;
 using FresherMisa2026.Entities.Extensions;
+using FresherMisa2026.Entities.Settings;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MySqlConnector;
 using System;
 using System.Collections.Generic;
@@ -29,22 +31,18 @@ namespace FresherMisa2026.Infrastructure.Repositories
         IConfiguration _configuration;
         protected string _tableName;
         public Type _modelType = null;
+        private readonly CacheSettings _cacheSettings;
 
-        /// <summary>
-        /// khai báo cache để lưu trữ dữ liệu tạm thời, 
-        /// giảm tải cho database và cải thiện hiệu suất truy xuất dữ liệu. 
-        /// Cache có thể được sử dụng để lưu trữ kết quả của các truy vấn phổ biến hoặc dữ liệu không thay đổi thường xuyên, 
-        /// giúp giảm thời gian phản hồi và tăng tốc độ truy cập dữ liệu.
-        /// </summary>
         protected IMemoryCache _cache;
         protected ILogger<BaseRepository<TEntity>> _logger;
 
         //Constructor
-        public BaseRepository(IConfiguration configuration, IMemoryCache cache, ILogger<BaseRepository<TEntity>> logger)
+        public BaseRepository(IConfiguration configuration, IMemoryCache cache, ILogger<BaseRepository<TEntity>> logger, IOptions<CacheSettings> cacheSettings)
         {
             _configuration = configuration;
             _cache = cache;
             _logger = logger;
+            _cacheSettings = cacheSettings.Value;
             _connectionString = _configuration.GetConnectionString("DefaultConnection")!;
             _modelType = typeof(TEntity);
             _tableName = _modelType.GetTableName();
@@ -77,9 +75,9 @@ namespace FresherMisa2026.Infrastructure.Repositories
             var result = await GetEntitiesUsingCommandTextAsync();
             sw.Stop();
 
-            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
-            _logger.LogInformation("[TRUY VẤN DB] GetEntitiesAsync - Bảng: {Table} | Lấy được {Count} bản ghi trong {ElapsedMs}ms | Đã lưu cache 5 phút",
-                _tableName, result.Count(), sw.ElapsedMilliseconds);
+            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(_cacheSettings.ExpirationMinutes));
+            _logger.LogInformation("[TRUY VẤN DB] GetEntitiesAsync - Bảng: {Table} | Lấy được {Count} bản ghi trong {ElapsedMs}ms | Đã lưu cache {ExpirationMinutes} phút",
+                _tableName, result.Count(), sw.ElapsedMilliseconds, _cacheSettings.ExpirationMinutes);
             return result;
         }
 
@@ -133,7 +131,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 var found = allCached.FirstOrDefault(e => keyProp?.GetValue(e) is Guid id && id == entityId);
                 if (found != null)
                 {
-                    _cache.Set(cacheKey, found, TimeSpan.FromMinutes(5));
+                    _cache.Set(cacheKey, found, TimeSpan.FromMinutes(_cacheSettings.ExpirationMinutes));
                     _logger.LogInformation("[CACHE TRÚNG - DANH SÁCH] GetEntityByIDAsync - Bảng: {Table} | ID: {Id} | Tìm thấy trong cache danh sách, không cần query DB",
                         _tableName, entityId);
                     return found;
@@ -146,9 +144,9 @@ namespace FresherMisa2026.Infrastructure.Repositories
             var result = await GetEntitieByIdUsingCommandTextAsync(entityId.ToString());
             sw.Stop();
 
-            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
-            _logger.LogInformation("[TRUY VẤN DB] GetEntityByIDAsync - Bảng: {Table} | ID: {Id} | Lấy dữ liệu trong {ElapsedMs}ms | Đã lưu cache 5 phút",
-                _tableName, entityId, sw.ElapsedMilliseconds);
+            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(_cacheSettings.ExpirationMinutes));
+            _logger.LogInformation("[TRUY VẤN DB] GetEntityByIDAsync - Bảng: {Table} | ID: {Id} | Lấy dữ liệu trong {ElapsedMs}ms | Đã lưu cache {ExpirationMinutes} phút",
+                _tableName, entityId, sw.ElapsedMilliseconds, _cacheSettings.ExpirationMinutes);
             return result;
         }
 
@@ -404,29 +402,20 @@ namespace FresherMisa2026.Infrastructure.Repositories
             private DynamicParameters MappingDbType(TEntity entity)
         {
             var parameters = new DynamicParameters();
-            try
-            {
-                //1. Duyệt các thuộc tính trên entity và tạo parameters
-                var properties = entity.GetType().GetProperties();
+            var properties = entity.GetType().GetProperties();
 
-                foreach (var property in properties)
-                {
-                    var propertyName = property.Name;
-                    var propertyValue = property.GetValue(entity);
-                    var propertyType = property.PropertyType;
-
-                    if (propertyType == typeof(Guid) || propertyType == typeof(Guid?))
-                        parameters.Add($"@v_{propertyName}", propertyValue, DbType.String);
-                    else
-                        parameters.Add($"@v_{propertyName}", propertyValue);
-                }
-            }
-            catch (Exception ex)
+            foreach (var property in properties)
             {
-                // Log error but continue with empty parameters
-                Console.WriteLine($"Error mapping entity properties: {ex.Message}");
+                var propertyName = property.Name;
+                var propertyValue = property.GetValue(entity);
+                var propertyType = property.PropertyType;
+
+                if (propertyType == typeof(Guid) || propertyType == typeof(Guid?))
+                    parameters.Add($"@v_{propertyName}", propertyValue, DbType.String);
+                else
+                    parameters.Add($"@v_{propertyName}", propertyValue);
             }
-            //2. Trả về danh sách các parameter
+
             return parameters;
         }
 

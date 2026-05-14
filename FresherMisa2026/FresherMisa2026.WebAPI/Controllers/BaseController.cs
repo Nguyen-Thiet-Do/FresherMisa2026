@@ -1,7 +1,9 @@
 using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Enums;
+using FresherMisa2026.Entities.Settings;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace FresherMisa2026.WebAPI.Controllers
 {
@@ -10,10 +12,12 @@ namespace FresherMisa2026.WebAPI.Controllers
     public class BaseController<TEntity> : ControllerBase
     {
         private readonly IBaseService<TEntity> _baseService;
+        private readonly PagingSettings _pagingSettings;
 
-        public BaseController(IBaseService<TEntity> baseService)
+        public BaseController(IBaseService<TEntity> baseService, IOptions<PagingSettings> pagingSettings)
         {
             _baseService = baseService;
+            _pagingSettings = pagingSettings.Value;
         }
 
         /// <summary>
@@ -23,15 +27,15 @@ namespace FresherMisa2026.WebAPI.Controllers
         public async Task<ActionResult<ServiceResponse>> GetFilterPaging(
             [FromQuery] string? search,
             [FromQuery] string? sort,
-            [FromQuery] int pageSize = 10,
-            [FromQuery] int pageIndex = 1,
+            [FromQuery] int? pageSize = null,
+            [FromQuery] int? pageIndex = null,
             [FromQuery] string? searchFields = null
         )
         {
             var pagingRequest = new PagingRequest
             {
-                PageIndex = pageIndex,
-                PageSize = pageSize,
+                PageIndex = pageIndex ?? _pagingSettings.DefaultPageIndex,
+                PageSize = pageSize ?? _pagingSettings.DefaultPageSize,
                 Search = search ?? string.Empty,
                 Sort = sort ?? string.Empty,
                 SearchFields = searchFields ?? string.Empty

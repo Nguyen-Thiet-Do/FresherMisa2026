@@ -1,11 +1,14 @@
 using Dapper;
+using FresherMisa2026.Application.Extensions;
 using FresherMisa2026.Application.Interfaces.Repositories;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Candidate;
 using FresherMisa2026.Entities.Candidate.DTO;
+using FresherMisa2026.Entities.Settings;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Data;
 
 namespace FresherMisa2026.Infrastructure.Repositories
@@ -15,8 +18,9 @@ namespace FresherMisa2026.Infrastructure.Repositories
         public CandidateRepository(
             IConfiguration configuration,
             IMemoryCache cache,
-            ILogger<BaseRepository<Candidate>> logger)
-            : base(configuration, cache, logger)
+            ILogger<BaseRepository<Candidate>> logger,
+            IOptions<CacheSettings> cacheSettings)
+            : base(configuration, cache, logger, cacheSettings)
         {
         }
 
@@ -50,6 +54,20 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 Total = total,
                 Data = data.ToList()
             };
+        }
+
+        public async Task<Candidate?> GetByPhoneNumberAsync(string phoneNumber)
+        {
+            string query = SQLExtension.GetQuery("Candidate.GetByPhoneNumber");
+            using var connection = CreateConnection();
+            return await connection.QueryFirstOrDefaultAsync<Candidate>(query, new { PhoneNumber = phoneNumber }, commandType: CommandType.Text);
+        }
+
+        public async Task<Candidate?> GetByEmailAsync(string email)
+        {
+            string query = SQLExtension.GetQuery("Candidate.GetByEmail");
+            using var connection = CreateConnection();
+            return await connection.QueryFirstOrDefaultAsync<Candidate>(query, new { Email = email }, commandType: CommandType.Text);
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Dapper;
 using FresherMisa2026.Application.Interfaces;
 using FresherMisa2026.Entities;
+using FresherMisa2026.Entities.AdvancedFilter;
 using FresherMisa2026.Entities.Department;
 using FresherMisa2026.Entities.Exceptions;
 using FresherMisa2026.Entities.Extensions;
@@ -466,6 +467,294 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
             return parameters;
         }
+
+        #region Advanced Filter
+
+        /// <summary>
+        /// Approach 1: C# tự build câu SQL động — field names whitelist qua reflection, values luôn parameterized.
+        /// Endpoint: POST /api/{entity}/AdvancedFilter
+        /// </summary>
+        public async Task<(long Total, IEnumerable<TEntity> Data)> GetAdvancedFilterPagingAsync(AdvancedFilterRequest request)
+        {
+            var filters = request.Filters ?? new List<FilterCondition>();
+            var parameters = new DynamicParameters();
+            var whereParts = new List<string>();
+
+            if (_modelType.GetHasDeletedColumn())
+                whereParts.Add("IsDeleted = FALSE");
+
+            BuildFilterConditions(filters, parameters, whereParts);
+
+            var whereSection = whereParts.Count > 0
+                ? $"WHERE {string.Join(" AND ", whereParts)}"
+                : string.Empty;
+
+            var orderBy = BuildSortSql(request.Sort);
+            var pageIndex = Math.Max(1, request.PageIndex);
+            var pageSize = Math.Max(1, request.PageSize);
+            var offset = (pageIndex - 1) * pageSize;
+
+            parameters.Add("@_limit", pageSize);
+            parameters.Add("@_offset", offset);
+
+            var dataSql = $"SELECT * FROM `{_tableName}` {whereSection} {orderBy} LIMIT @_limit OFFSET @_offset";
+            var countSql = $"SELECT COUNT(*) FROM `{_tableName}` {whereSection}";
+
+            using var connection = CreateConnection();
+            await connection.OpenAsync();
+
+            var data = await connection.QueryAsync<TEntity>(dataSql, parameters, commandType: CommandType.Text);
+            var total = await connection.ExecuteScalarAsync<long>(countSql, parameters, commandType: CommandType.Text);
+
+            return (total, data.ToList());
+        }
+
+        /// <summary>
+        /// Approach 2: Truyền filters dưới dạng JSON vào stored procedure — SP tự build WHERE.
+        /// C# vẫn validate field names trước khi gọi SP.
+        /// Endpoint: POST /api/{entity}/AdvancedFilterProc
+        /// </summary>
+        public async Task<(long Total, IEnumerable<TEntity> Data)> GetAdvancedFilterPagingWithProcAsync(AdvancedFilterRequest request)
+        {
+            var filters = request.Filters ?? new List<FilterCondition>();
+            ValidateFilterFields(filters);
+
+            using var connection = CreateConnection();
+            await connection.OpenAsync();
+
+            var store = $"Proc_{_tableName}_AdvancedFilterPaging";
+            var parameters = new DynamicParameters();
+            parameters.Add("@v_pageIndex", Math.Max(1, request.PageIndex));
+            parameters.Add("@v_pageSize", Math.Max(1, request.PageSize));
+            parameters.Add("@v_sort", request.Sort ?? string.Empty);
+            parameters.Add("@v_filters", JsonSerializer.Serialize(filters));
+
+            using var reader = await connection.QueryMultipleAsync(
+                new CommandDefinition(store, parameters, commandType: CommandType.StoredProcedure));
+
+            var data = (await reader.ReadAsync<TEntity>()).ToList();
+            var total = await reader.ReadFirstAsync<long>();
+
+            return (total, data);
+        }
+
+        /// <summary>
+        /// Validate tất cả field names trong filters phải tồn tại trên entity — dùng cho cả 2 approach.
+        /// </summary>
+        private void ValidateFilterFields(List<FilterCondition> filters)
+        {
+            var validProps = _modelType.GetProperties()
+                .Select(p => p.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var filter in filters)
+            {
+                if (!validProps.Contains(filter.Field))
+                    throw new ArgumentException($"Trường '{filter.Field}' không tồn tại trên entity {_tableName}");
+            }
+        }
+
+        /// <summary>
+        /// Build ORDER BY từ sort string (ví dụ: "-Salary,+EmployeeName").
+        /// Field names được validate qua reflection — không thể inject.
+        /// </summary>
+        private string BuildSortSql(string? sort)
+        {
+            if (string.IsNullOrWhiteSpace(sort))
+                return $"ORDER BY `{_keyName}` DESC";
+
+            var validProps = _modelType.GetProperties()
+                .ToDictionary(p => p.Name, p => p.Name, StringComparer.OrdinalIgnoreCase);
+
+            var orderParts = sort
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(part =>
+                {
+                    var trimmed = part.Trim();
+                    var isDesc = trimmed.StartsWith('-');
+                    var fieldName = trimmed.TrimStart('+', '-').Trim();
+                    return validProps.TryGetValue(fieldName, out var actual)
+                        ? $"`{actual}` {(isDesc ? "DESC" : "ASC")}"
+                        : null;
+                })
+                .Where(s => s != null)
+                .ToList();
+
+            return orderParts.Count > 0
+                ? $"ORDER BY {string.Join(", ", orderParts)}"
+                : $"ORDER BY `{_keyName}` DESC";
+        }
+
+        /// <summary>
+        /// Build danh sách WHERE conditions từ filters.
+        /// Field names: whitelist qua reflection → safe. Values: Dapper parameters → safe.
+        /// </summary>
+        private void BuildFilterConditions(List<FilterCondition> filters, DynamicParameters parameters, List<string> whereParts)
+        {
+            var validProps = _modelType.GetProperties()
+                .ToDictionary(p => p.Name, p => p, StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < filters.Count; i++)
+            {
+                var filter = filters[i];
+
+                if (!validProps.TryGetValue(filter.Field, out var prop))
+                    throw new ArgumentException($"Trường '{filter.Field}' không tồn tại trên entity {_tableName}");
+
+                var col = $"`{prop.Name}`";
+                var p = $"@fp{i}";
+                var pTo = $"@fp{i}to";
+                string? condition = null;
+
+                switch (filter.Operator)
+                {
+                    case FilterOperator.Eq:
+                        condition = $"{col} = {p}";
+                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
+                        break;
+                    case FilterOperator.Neq:
+                        condition = $"{col} <> {p}";
+                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
+                        break;
+                    case FilterOperator.Contains:
+                        condition = $"{col} LIKE CONCAT('%', {p}, '%')";
+                        parameters.Add(p, filter.Value?.GetString());
+                        break;
+                    case FilterOperator.NotContains:
+                        condition = $"{col} NOT LIKE CONCAT('%', {p}, '%')";
+                        parameters.Add(p, filter.Value?.GetString());
+                        break;
+                    case FilterOperator.StartsWith:
+                        condition = $"{col} LIKE CONCAT({p}, '%')";
+                        parameters.Add(p, filter.Value?.GetString());
+                        break;
+                    case FilterOperator.EndsWith:
+                        condition = $"{col} LIKE CONCAT('%', {p})";
+                        parameters.Add(p, filter.Value?.GetString());
+                        break;
+                    case FilterOperator.Empty:
+                        condition = $"({col} IS NULL OR {col} = '')";
+                        break;
+                    case FilterOperator.NotEmpty:
+                        condition = $"({col} IS NOT NULL AND {col} <> '')";
+                        break;
+                    case FilterOperator.Gt:
+                        condition = $"{col} > {p}";
+                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
+                        break;
+                    case FilterOperator.Lt:
+                        condition = $"{col} < {p}";
+                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
+                        break;
+                    case FilterOperator.Gte:
+                        condition = $"{col} >= {p}";
+                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
+                        break;
+                    case FilterOperator.Lte:
+                        condition = $"{col} <= {p}";
+                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
+                        break;
+                    case FilterOperator.Between:
+                        condition = $"{col} BETWEEN {p} AND {pTo}";
+                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
+                        parameters.Add(pTo, ConvertValue(filter.ValueTo, prop.PropertyType));
+                        break;
+                    case FilterOperator.NotBetween:
+                        condition = $"{col} NOT BETWEEN {p} AND {pTo}";
+                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
+                        parameters.Add(pTo, ConvertValue(filter.ValueTo, prop.PropertyType));
+                        break;
+                    case FilterOperator.Today:
+                        condition = $"DATE({col}) = CURDATE()";
+                        break;
+                    case FilterOperator.ThisWeek:
+                        condition = $"{col} BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) " +
+                                    $"AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY)";
+                        break;
+                    case FilterOperator.ThisMonth:
+                        condition = $"{col} BETWEEN DATE_FORMAT(CURDATE(), '%Y-%m-01') AND LAST_DAY(CURDATE())";
+                        break;
+                    case FilterOperator.ThisYear:
+                        condition = $"{col} BETWEEN DATE_FORMAT(CURDATE(), '%Y-01-01') AND DATE_FORMAT(CURDATE(), '%Y-12-31')";
+                        break;
+                    case FilterOperator.LastNDays:
+                        var lastN = GetIntValue(filter.Value, 30);
+                        condition = $"{col} >= DATE_SUB(CURDATE(), INTERVAL {lastN} DAY)";
+                        break;
+                    case FilterOperator.NextNDays:
+                        var nextN = GetIntValue(filter.Value, 7);
+                        condition = $"{col} BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL {nextN} DAY)";
+                        break;
+                    case FilterOperator.In:
+                        var inParams = BuildMultiValueParams(filter.Values, prop.PropertyType, $"fpi{i}", parameters);
+                        condition = inParams.Count > 0
+                            ? $"{col} IN ({string.Join(", ", inParams)})"
+                            : "1 = 0";
+                        break;
+                    case FilterOperator.NotIn:
+                        var notInParams = BuildMultiValueParams(filter.Values, prop.PropertyType, $"fpni{i}", parameters);
+                        condition = notInParams.Count > 0
+                            ? $"{col} NOT IN ({string.Join(", ", notInParams)})"
+                            : "1 = 1";
+                        break;
+                }
+
+                if (condition != null)
+                    whereParts.Add(condition);
+            }
+        }
+
+        private List<string> BuildMultiValueParams(List<JsonElement>? values, Type targetType, string prefix, DynamicParameters parameters)
+        {
+            if (values == null || values.Count == 0) return new List<string>();
+
+            var paramNames = new List<string>();
+            for (int j = 0; j < values.Count; j++)
+            {
+                var key = $"@{prefix}_{j}";
+                parameters.Add(key, ConvertValue(values[j], targetType));
+                paramNames.Add(key);
+            }
+            return paramNames;
+        }
+
+        private static object? ConvertValue(JsonElement? element, Type targetType)
+        {
+            if (!element.HasValue || element.Value.ValueKind == JsonValueKind.Null) return null;
+
+            var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+            var kind = element.Value.ValueKind;
+
+            if (underlying == typeof(Guid)) return element.Value.GetString();
+            if (underlying == typeof(DateTime))
+                return kind == JsonValueKind.String ? element.Value.GetDateTime() : (object?)null;
+            if (underlying == typeof(decimal))
+                return kind == JsonValueKind.Number ? element.Value.GetDecimal() : decimal.Parse(element.Value.GetString() ?? "0");
+            if (underlying == typeof(double))
+                return kind == JsonValueKind.Number ? element.Value.GetDouble() : double.Parse(element.Value.GetString() ?? "0");
+            if (underlying == typeof(int))
+                return kind == JsonValueKind.Number ? element.Value.GetInt32() : int.Parse(element.Value.GetString() ?? "0");
+            if (underlying == typeof(long))
+                return kind == JsonValueKind.Number ? element.Value.GetInt64() : long.Parse(element.Value.GetString() ?? "0");
+            if (underlying == typeof(bool))
+            {
+                if (kind == JsonValueKind.True) return true;
+                if (kind == JsonValueKind.False) return false;
+                return bool.TryParse(element.Value.GetString(), out var b) ? b : false;
+            }
+
+            return element.Value.GetString();
+        }
+
+        private static int GetIntValue(JsonElement? element, int defaultValue = 0)
+        {
+            if (!element.HasValue || element.Value.ValueKind == JsonValueKind.Null) return defaultValue;
+            return element.Value.ValueKind == JsonValueKind.Number
+                ? element.Value.GetInt32()
+                : defaultValue;
+        }
+
+        #endregion
 
         private async Task ValidateUniqueColumnsAsync(TEntity entity, Guid? excludeId = null)
         {

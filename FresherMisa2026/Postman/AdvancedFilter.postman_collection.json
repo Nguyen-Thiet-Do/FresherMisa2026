@@ -1,0 +1,602 @@
+{
+  "info": {
+    "name": "FresherMisa2026 — Advanced Filter",
+    "description": "Test collection cho 2 endpoint lọc nâng cao:\n- POST /AdvancedFilter     → Approach 1: C# build SQL động\n- POST /AdvancedFilterProc → Approach 2: Stored Procedure nhận JSON\n\nThay {{departmentId}} / {{positionId}} bằng GUID thực từ DB trước khi test.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",       "value": "http://localhost:5237",                    "type": "string" },
+    { "key": "departmentId",  "value": "00000000-0000-0000-0000-000000000001",     "type": "string", "description": "Thay bằng DepartmentID thực" },
+    { "key": "departmentId2", "value": "00000000-0000-0000-0000-000000000002",     "type": "string" },
+    { "key": "positionId",    "value": "00000000-0000-0000-0000-000000000003",     "type": "string", "description": "Thay bằng PositionID thực" }
+  ],
+  "item": [
+
+    {
+      "name": "Employee — Approach 1 (Dynamic SQL)",
+      "description": "POST /api/Employees/AdvancedFilter\nC# build WHERE, values là Dapper parameters → an toàn SQL injection",
+      "item": [
+
+        {
+          "name": "01. Paging cơ bản (không filter)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-ModifiedDate\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "02. String — EmployeeName Contains 'Nguyen'",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"EmployeeName\", \"operator\": \"Contains\", \"value\": \"Nguyen\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "03. String — EmployeeCode StartsWith 'NV'",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"EmployeeCode\", \"operator\": \"StartsWith\", \"value\": \"NV\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "04. String — Email EndsWith '@gmail.com'",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"Email\", \"operator\": \"EndsWith\", \"value\": \"@gmail.com\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "05. String — PhoneNumber Empty (không có SĐT)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"PhoneNumber\", \"operator\": \"Empty\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "06. String — PhoneNumber NotEmpty (có SĐT)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"PhoneNumber\", \"operator\": \"NotEmpty\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "07. String — EmployeeName Neq (khác) 'Nguyen Van A'",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"EmployeeName\", \"operator\": \"Neq\", \"value\": \"Nguyen Van A\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "08. String — Address NotContains 'Ha Noi'",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"Address\", \"operator\": \"NotContains\", \"value\": \"Ha Noi\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "09. Number — Salary Between 10tr và 30tr",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-Salary\",\n  \"filters\": [\n    { \"field\": \"Salary\", \"operator\": \"Between\", \"value\": 10000000, \"valueTo\": 30000000 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "10. Number — Salary Gte 20tr",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-Salary\",\n  \"filters\": [\n    { \"field\": \"Salary\", \"operator\": \"Gte\", \"value\": 20000000 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "11. Number — Salary Lte 15tr",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"+Salary\",\n  \"filters\": [\n    { \"field\": \"Salary\", \"operator\": \"Lte\", \"value\": 15000000 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "12. Number — Salary NotBetween 10tr-20tr (ngoài khoảng)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"Salary\", \"operator\": \"NotBetween\", \"value\": 10000000, \"valueTo\": 20000000 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "13. Date preset — HireDate ThisYear",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"HireDate\", \"operator\": \"ThisYear\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "14. Date preset — HireDate ThisMonth",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"HireDate\", \"operator\": \"ThisMonth\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "15. Date preset — HireDate ThisWeek",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"HireDate\", \"operator\": \"ThisWeek\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "16. Date preset — HireDate Today",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"HireDate\", \"operator\": \"Today\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "17. Date preset — HireDate LastNDays(30) — 30 ngày gần đây",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"HireDate\", \"operator\": \"LastNDays\", \"value\": 30 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "18. Date preset — HireDate NextNDays(7) — 7 ngày tới",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"HireDate\", \"operator\": \"NextNDays\", \"value\": 7 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "19. Date — HireDate Between 2 mốc ngày cụ thể",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-HireDate\",\n  \"filters\": [\n    { \"field\": \"HireDate\", \"operator\": \"Between\", \"value\": \"2024-01-01\", \"valueTo\": \"2024-12-31\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "20. Enum — Gender Eq Nam (value = 1)",
+          "description": "0 = Không xác định, 1 = Nam, 2 = Nữ",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"Gender\", \"operator\": \"Eq\", \"value\": 1 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "21. FK — DepartmentID Eq (1 phòng ban)",
+          "description": "Thay {{departmentId}} bằng GUID thực",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"DepartmentID\", \"operator\": \"Eq\", \"value\": \"{{departmentId}}\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "22. FK — DepartmentID In (nhiều phòng ban)",
+          "description": "Thay {{departmentId}} và {{departmentId2}} bằng GUID thực",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"DepartmentID\", \"operator\": \"In\", \"values\": [\"{{departmentId}}\", \"{{departmentId2}}\"] }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "23. FK — DepartmentID NotIn (loại trừ phòng ban)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"DepartmentID\", \"operator\": \"NotIn\", \"values\": [\"{{departmentId}}\"] }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "24. Kết hợp — Name + Salary + HireDate (3 điều kiện)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-Salary\",\n  \"filters\": [\n    { \"field\": \"EmployeeName\", \"operator\": \"Contains\",  \"value\": \"Nguyen\" },\n    { \"field\": \"Salary\",       \"operator\": \"Gte\",       \"value\": 10000000 },\n    { \"field\": \"HireDate\",     \"operator\": \"ThisYear\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "25. Kết hợp — Department In + Salary Between + Email NotEmpty",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 5,\n  \"sort\": \"-Salary,+EmployeeName\",\n  \"filters\": [\n    { \"field\": \"DepartmentID\", \"operator\": \"In\",      \"values\": [\"{{departmentId}}\", \"{{departmentId2}}\"] },\n    { \"field\": \"Salary\",       \"operator\": \"Between\", \"value\": 10000000, \"valueTo\": 50000000 },\n    { \"field\": \"Email\",        \"operator\": \"NotEmpty\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "26. Field không tồn tại — expect 400 (test validation)",
+          "description": "Gửi field 'InvalidField' không có trên Employee → API trả 400 ArgumentException",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"InvalidField\", \"operator\": \"Contains\", \"value\": \"test\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilter"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "Employee — Approach 2 (Stored Procedure)",
+      "description": "POST /api/Employees/AdvancedFilterProc\nC# validate fields → serialize JSON → SP Proc_Employee_AdvancedFilterPaging tự build WHERE\n⚠ Cần chạy advanced_filter_migration.sql trước",
+      "item": [
+
+        {
+          "name": "01. Paging cơ bản (không filter)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-ModifiedDate\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilterProc", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilterProc"] }
+          }
+        },
+
+        {
+          "name": "02. Salary Between 10tr-30tr",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-Salary\",\n  \"filters\": [\n    { \"field\": \"Salary\", \"operator\": \"Between\", \"value\": 10000000, \"valueTo\": 30000000 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilterProc", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilterProc"] }
+          }
+        },
+
+        {
+          "name": "03. DepartmentID In (nhiều phòng ban)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"DepartmentID\", \"operator\": \"In\", \"values\": [\"{{departmentId}}\", \"{{departmentId2}}\"] }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilterProc", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilterProc"] }
+          }
+        },
+
+        {
+          "name": "04. HireDate ThisMonth",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"HireDate\", \"operator\": \"ThisMonth\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilterProc", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilterProc"] }
+          }
+        },
+
+        {
+          "name": "05. Kết hợp — Name + Salary + HireDate (giống Approach 1 để so sánh)",
+          "description": "Gửi cùng body với request 24 của Approach 1 → kết quả phải giống nhau",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-Salary\",\n  \"filters\": [\n    { \"field\": \"EmployeeName\", \"operator\": \"Contains\",  \"value\": \"Nguyen\" },\n    { \"field\": \"Salary\",       \"operator\": \"Gte\",       \"value\": 10000000 },\n    { \"field\": \"HireDate\",     \"operator\": \"ThisYear\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Employees/AdvancedFilterProc", "host": ["{{baseUrl}}"], "path": ["api","Employees","AdvancedFilterProc"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "Department — AdvancedFilter",
+      "description": "POST /api/Departments/AdvancedFilter",
+      "item": [
+
+        {
+          "name": "01. DepartmentName Contains",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"DepartmentName\", \"operator\": \"Contains\", \"value\": \"Kinh\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Departments/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Departments","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "02. DepartmentCode StartsWith",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"DepartmentCode\", \"operator\": \"StartsWith\", \"value\": \"PB\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Departments/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Departments","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "03. Description Empty (chưa có mô tả)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"Description\", \"operator\": \"Empty\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Departments/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Departments","AdvancedFilter"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "Position — AdvancedFilter",
+      "description": "POST /api/Positions/AdvancedFilter",
+      "item": [
+
+        {
+          "name": "01. Paging cơ bản",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"+PositionName\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Positions/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Positions","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "02. PositionName Contains 'Truong'",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"PositionName\", \"operator\": \"Contains\", \"value\": \"Truong\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Positions/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Positions","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "03. PositionCode Neq 'GD'",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"PositionCode\", \"operator\": \"Neq\", \"value\": \"GD\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Positions/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Positions","AdvancedFilter"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "Candidate — AdvancedFilter",
+      "description": "POST /api/Candidates/AdvancedFilter",
+      "item": [
+
+        {
+          "name": "01. FullName Contains 'Tran'",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"FullName\", \"operator\": \"Contains\", \"value\": \"Tran\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Candidates/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Candidates","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "02. Gender Eq 'Nam' (Candidate dùng string)",
+          "description": "Candidate.Gender là string, khác Employee.Gender là int",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"Gender\", \"operator\": \"Eq\", \"value\": \"Nam\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Candidates/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Candidates","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "03. Bool — IsEmployee Eq true",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"IsEmployee\", \"operator\": \"Eq\", \"value\": true }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Candidates/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Candidates","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "04. Bool — IsEmployee Eq false",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"IsEmployee\", \"operator\": \"Eq\", \"value\": false }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Candidates/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Candidates","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "05. Date — HiringDate LastNDays(60) — ứng viên 2 tháng gần đây",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-HiringDate\",\n  \"filters\": [\n    { \"field\": \"HiringDate\", \"operator\": \"LastNDays\", \"value\": 60 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Candidates/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Candidates","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "06. City In (nhiều thành phố)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"City\", \"operator\": \"In\", \"values\": [\"Ha Noi\", \"Ho Chi Minh\", \"Da Nang\"] }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Candidates/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Candidates","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "07. CVFile Empty (chưa nộp CV)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"filters\": [\n    { \"field\": \"CVFile\", \"operator\": \"Empty\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Candidates/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Candidates","AdvancedFilter"] }
+          }
+        },
+
+        {
+          "name": "08. Kết hợp — Gender + IsEmployee + HiringDate",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"pageIndex\": 1,\n  \"pageSize\": 10,\n  \"sort\": \"-HiringDate\",\n  \"filters\": [\n    { \"field\": \"Gender\",     \"operator\": \"Eq\",        \"value\": \"Nam\" },\n    { \"field\": \"IsEmployee\", \"operator\": \"Eq\",        \"value\": false },\n    { \"field\": \"HiringDate\", \"operator\": \"ThisYear\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/Candidates/AdvancedFilter", "host": ["{{baseUrl}}"], "path": ["api","Candidates","AdvancedFilter"] }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}

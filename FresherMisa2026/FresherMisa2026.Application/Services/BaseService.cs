@@ -1,6 +1,7 @@
 ﻿using FresherMisa2026.Application.Interfaces;
 using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities;
+using FresherMisa2026.Entities.AdvancedFilter;
 using FresherMisa2026.Entities.Enums;
 using FresherMisa2026.Entities.Extensions;
 using System.Collections.Concurrent;
@@ -305,6 +306,36 @@ namespace FresherMisa2026.Application.Services
             return CreateSuccessResponse(response);
         }
         #endregion
+
+        /// <summary>
+        /// Approach 1: Advanced filter paging — Dynamic SQL trong C#
+        /// </summary>
+        public async Task<ServiceResponse> AdvancedFilterPagingAsync(AdvancedFilterRequest request)
+        {
+            var (total, data) = await _baseRepository.GetAdvancedFilterPagingAsync(request);
+            return CreateSuccessResponse(BuildPagingResponse(total, request.PageIndex, request.PageSize, data));
+        }
+
+        /// <summary>
+        /// Approach 2: Advanced filter paging — Stored Procedure nhận JSON
+        /// </summary>
+        public async Task<ServiceResponse> AdvancedFilterPagingWithProcAsync(AdvancedFilterRequest request)
+        {
+            var (total, data) = await _baseRepository.GetAdvancedFilterPagingWithProcAsync(request);
+            return CreateSuccessResponse(BuildPagingResponse(total, request.PageIndex, request.PageSize, data));
+        }
+
+        private static PagingResponse<TEntity> BuildPagingResponse(long total, int pageIndex, int pageSize, IEnumerable<TEntity> data)
+        {
+            return new PagingResponse<TEntity>
+            {
+                Total = total,
+                PageSize = pageSize,
+                CurrentPage = pageIndex,
+                PageCount = (long)Math.Ceiling((double)total / pageSize),
+                Data = data.ToList()
+            };
+        }
 
         #region Virtual method - Lifecycle hooks
         /// <summary>

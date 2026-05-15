@@ -1,4 +1,5 @@
 using FresherMisa2026.Entities;
+using FresherMisa2026.Entities.AdvancedFilter;
 using System;
 using System.Collections.Generic;
 
@@ -6,6 +7,16 @@ namespace FresherMisa2026.Application.Interfaces.Services
 {
     public interface IBaseService<TEntity>
     {
+        /// <summary>
+        /// Approach 1: Advanced filter dùng Dynamic SQL trong C#
+        /// </summary>
+        Task<ServiceResponse> AdvancedFilterPagingAsync(AdvancedFilterRequest request);
+
+        /// <summary>
+        /// Approach 2: Advanced filter dùng Stored Procedure
+        /// </summary>
+        Task<ServiceResponse> AdvancedFilterPagingWithProcAsync(AdvancedFilterRequest request);
+
         /// <summary>
         /// Lấy tất cả bản ghi
         /// </summary>

@@ -1,5 +1,6 @@
 using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities;
+using FresherMisa2026.Entities.AdvancedFilter;
 using FresherMisa2026.Entities.Enums;
 using FresherMisa2026.Entities.Settings;
 using Microsoft.AspNetCore.Mvc;
@@ -101,6 +102,26 @@ namespace FresherMisa2026.WebAPI.Controllers
                 return BadRequest(response);
 
             return StatusCode((int)ResponseCode.Created, response);
+        }
+
+        /// <summary>
+        /// Lọc nâng cao — Approach 1: Dynamic SQL (C# build WHERE, an toàn injection)
+        /// </summary>
+        [HttpPost("AdvancedFilter")]
+        public async Task<ActionResult<ServiceResponse>> AdvancedFilter([FromBody] AdvancedFilterRequest request)
+        {
+            var response = await _baseService.AdvancedFilterPagingAsync(request);
+            return Ok(response);
+        }
+
+        /// <summary>
+        /// Lọc nâng cao — Approach 2: Stored Procedure (SP nhận JSON, tự build WHERE)
+        /// </summary>
+        [HttpPost("AdvancedFilterProc")]
+        public async Task<ActionResult<ServiceResponse>> AdvancedFilterProc([FromBody] AdvancedFilterRequest request)
+        {
+            var response = await _baseService.AdvancedFilterPagingWithProcAsync(request);
+            return Ok(response);
         }
 
         /// <summary>

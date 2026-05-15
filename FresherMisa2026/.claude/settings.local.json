@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(cs\\)$\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(New-Item -ItemType Directory -Force -Path \"D:\\\\FresherMisa2026\\\\BE\\\\FresherMisa2026\\\\FresherMisa2026\\\\FresherMisa2026.WebAPI\\\\wwwroot\\\\uploads\")",
+      "Bash(Out-Null)",
+      "Bash(Write-Host \"Created wwwroot/uploads\")",
+      "PowerShell(New-Item *)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\FresherMisa2026\\\\BE\\\\FresherMisa2026\\\\FresherMisa2026\" -Recurse -Force | Where-Object { $_.PSIsContainer -eq $false } | Sort-Object FullName | Select-Object -ExpandProperty FullName)",
+      "Bash(dotnet build *)",
+      "Bash(Select-String -Pattern \"error|Error|warning CS|Build succeeded|Build FAILED\")",
+      "Bash(Select-Object -Last 20)",
+      "Bash(Select-String -Pattern \"error|Error|Build succeeded|Build FAILED\")",
+      "Bash(git commit *)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\FresherMisa2026\\\\BE\\\\FresherMisa2026\\\\FresherMisa2026\" -Recurse -Directory | Select-Object -First 30 | ForEach-Object { $_.FullName })"
+    ]
+  }
+}

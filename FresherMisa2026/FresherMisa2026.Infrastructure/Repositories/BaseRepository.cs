@@ -267,6 +267,53 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
 
         /// <summary>
+        /// Xóa nhiều bản ghi trong một transaction
+        /// </summary>
+        /// <param name="ids">Danh sách Id cần xóa</param>
+        /// <returns>Số bản ghi bị xóa</returns>
+        /// CREATED BY: DVHAI (19/05/2026)
+        public async Task<int> DeleteManyAsync(List<Guid> ids)
+        {
+            var totalRowAffects = 0;
+            using var connection = CreateConnection();
+            await connection.OpenAsync();
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                foreach (var id in ids)
+                {
+                    var dynamicParams = new DynamicParameters();
+                    dynamicParams.Add($"@v_{_keyName}", id);
+
+                    totalRowAffects += await connection.ExecuteAsync(
+                        $"Proc_Delete{_tableName}ById",
+                        param: dynamicParams,
+                        transaction: transaction,
+                        commandType: CommandType.StoredProcedure);
+                }
+
+                transaction.Commit();
+                _cache.Remove($"{_tableName}_all");
+                foreach (var id in ids)
+                    _cache.Remove($"{_tableName}_{id}");
+
+                _logger.LogInformation("[XÓA CACHE] DeleteManyAsync - Bảng: {Table} | Đã xóa {Count} bản ghi", _tableName, ids.Count);
+            }
+            catch (MySqlException ex)
+            {
+                transaction.Rollback();
+                throw TranslateMySqlException(ex);
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+
+            return totalRowAffects;
+        }
+
+        /// <summary>
         /// Thêm bản ghi mới
         /// </summary>
         /// <param name="entity">Thông tin bản ghi</param>
@@ -755,6 +802,48 @@ namespace FresherMisa2026.Infrastructure.Repositories
         }
 
         #endregion
+
+        /// <summary>
+        /// Cập nhật một trường cụ thể bằng inline SQL.
+        /// fieldName đã được validate qua reflection ở tầng Service — không thể inject.
+        /// </summary>
+        /// <param name="entityId">Id bản ghi</param>
+        /// <param name="fieldName">Tên cột trong DB (prop.Name từ reflection)</param>
+        /// <param name="value">Giá trị mới đã được convert đúng kiểu</param>
+        /// <returns>Số bản ghi bị ảnh hưởng</returns>
+        /// CREATED BY: NTDo (24/05/2026)
+        public async Task<int> PatchFieldAsync(Guid entityId, string fieldName, object? value)
+        {
+            var sql = new StringBuilder($"UPDATE `{_tableName}` SET `{fieldName}` = @value WHERE `{_keyName}` = @id");
+
+            if (_modelType.GetHasDeletedColumn())
+                sql.Append(" AND IsDeleted = FALSE");
+
+            using var connection = CreateConnection();
+            await connection.OpenAsync();
+
+            int rows;
+            try
+            {
+                rows = await connection.ExecuteAsync(sql.ToString(),
+                    new { value, id = entityId.ToString() },
+                    commandType: CommandType.Text);
+            }
+            catch (MySqlException ex)
+            {
+                throw TranslateMySqlException(ex);
+            }
+
+            if (rows > 0)
+            {
+                _cache.Remove($"{_tableName}_all");
+                _cache.Remove($"{_tableName}_{entityId}");
+                _logger.LogInformation("[XÓA CACHE] PatchFieldAsync - Bảng: {Table} | ID: {Id} | Trường: {Field}",
+                    _tableName, entityId, fieldName);
+            }
+
+            return rows;
+        }
 
         private async Task ValidateUniqueColumnsAsync(TEntity entity, Guid? excludeId = null)
         {

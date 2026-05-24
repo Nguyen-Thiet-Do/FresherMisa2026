@@ -2,6 +2,7 @@ using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.AdvancedFilter;
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace FresherMisa2026.Application.Interfaces.Services
 {
@@ -41,6 +42,22 @@ namespace FresherMisa2026.Application.Interfaces.Services
         Task<ServiceResponse> DeleteByIDAsync(Guid entityId);
 
         /// <summary>
+        /// Xóa nhiều bản ghi trong một transaction — fail-fast: rollback toàn bộ nếu có 1 ID lỗi
+        /// </summary>
+        /// <param name="ids">Danh sách Id cần xóa</param>
+        /// <returns>ServiceResponse</returns>
+        /// CREATED BY: DVHAI (19/05/2026)
+        Task<ServiceResponse> DeleteManyAsync(List<Guid> ids);
+
+        /// <summary>
+        /// Xóa nhiều bản ghi — partial result: tiếp tục xóa dù có ID thất bại, trả về succeeded/failed
+        /// </summary>
+        /// <param name="ids">Danh sách Id cần xóa</param>
+        /// <returns>ServiceResponse chứa BulkDeleteResult</returns>
+        /// CREATED BY: DVHAI (19/05/2026)
+        Task<ServiceResponse> DeleteManyPartialAsync(List<Guid> ids);
+
+        /// <summary>
         /// Thêm một thực thể
         /// </summary>
         /// <param name="entity">Thực thể cần thêm</param>
@@ -64,5 +81,15 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// <returns>Danh sách thực thể phân trang</returns>
         /// CREATED BY: DVHAI (07/07/2026)
         Task<ServiceResponse> GetFilterPagingAsync(PagingRequest pagingRequest);
+
+        /// <summary>
+        /// Cập nhật một trường cụ thể — validate trường bảo mật trước khi ghi
+        /// </summary>
+        /// <param name="entityId">Id bản ghi</param>
+        /// <param name="fieldName">Tên trường cần cập nhật</param>
+        /// <param name="value">Giá trị mới dưới dạng JSON</param>
+        /// <returns>ServiceResponse</returns>
+        /// CREATED BY: NTDo (24/05/2026)
+        Task<ServiceResponse> PatchFieldAsync(Guid entityId, string fieldName, JsonElement value);
     }
 }

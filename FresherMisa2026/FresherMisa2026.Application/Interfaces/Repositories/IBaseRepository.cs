@@ -60,6 +60,14 @@ namespace FresherMisa2026.Application.Interfaces
         Task<int> DeleteAsync(Guid entityId);
 
         /// <summary>
+        /// Xóa nhiều bản ghi trong một transaction
+        /// </summary>
+        /// <param name="ids">Danh sách Id cần xóa</param>
+        /// <returns>Số bản ghi bị xóa</returns>
+        /// CREATED BY: DVHAI (19/05/2026)
+        Task<int> DeleteManyAsync(List<Guid> ids);
+
+        /// <summary>
         /// Thêm bản ghi
         /// </summary>
         /// <param name="entity">Thông tin bản ghi</param>
@@ -75,5 +83,15 @@ namespace FresherMisa2026.Application.Interfaces
         /// <returns>Số bản ghi bị ảnh hưởng</returns>
         /// CREATED BY: DVHAI (07/07/2026)
         Task<int> UpdateAsync(Guid entityId, TEntity entity);
+
+        /// <summary>
+        /// Cập nhật một trường cụ thể của bản ghi (PATCH single field)
+        /// </summary>
+        /// <param name="entityId">Id bản ghi</param>
+        /// <param name="fieldName">Tên cột trong DB (đã validate qua reflection)</param>
+        /// <param name="value">Giá trị mới</param>
+        /// <returns>Số bản ghi bị ảnh hưởng</returns>
+        /// CREATED BY: NTDo (24/05/2026)
+        Task<int> PatchFieldAsync(Guid entityId, string fieldName, object? value);
     }
 }

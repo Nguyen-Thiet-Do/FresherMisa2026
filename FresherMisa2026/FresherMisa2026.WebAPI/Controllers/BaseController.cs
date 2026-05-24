@@ -5,6 +5,7 @@ using FresherMisa2026.Entities.Enums;
 using FresherMisa2026.Entities.Settings;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace FresherMisa2026.WebAPI.Controllers
 {
@@ -74,6 +75,37 @@ namespace FresherMisa2026.WebAPI.Controllers
         }
 
         /// <summary>
+        /// Xóa nhiều phần tử trong một transaction — fail-fast: rollback toàn bộ nếu có 1 ID lỗi
+        /// </summary>
+        [HttpPost("bulk-delete")]
+        public async Task<ActionResult<ServiceResponse>> DeleteMany([FromBody] List<Guid> ids)
+        {
+            var response = await _baseService.DeleteManyAsync(ids);
+
+            if (!response.IsSuccess && response.Code == (int)ResponseCode.NotFound)
+                return NotFound(response);
+
+            if (!response.IsSuccess && response.Code == (int)ResponseCode.BadRequest)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
+
+        /// <summary>
+        /// Xóa nhiều phần tử — partial result: tiếp tục xóa dù có ID thất bại
+        /// </summary>
+        [HttpPost("bulk-delete/partial")]
+        public async Task<ActionResult<ServiceResponse>> DeleteManyPartial([FromBody] List<Guid> ids)
+        {
+            var response = await _baseService.DeleteManyPartialAsync(ids);
+
+            if (!response.IsSuccess && response.Code == (int)ResponseCode.BadRequest)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
+
+        /// <summary>
         /// Xóa một phần tử
         /// </summary>
         [HttpDelete("{id:guid}")]
@@ -131,6 +163,25 @@ namespace FresherMisa2026.WebAPI.Controllers
         public async Task<ActionResult<ServiceResponse>> Put(Guid id, [FromBody] TEntity entity)
         {
             var response = await _baseService.UpdateAsync(id, entity);
+
+            if (!response.IsSuccess)
+            {
+                if (response.Code == (int)ResponseCode.NotFound)
+                    return NotFound(response);
+                return BadRequest(response);
+            }
+
+            return Ok(response);
+        }
+
+        /// <summary>
+        /// Cập nhật một trường cụ thể — validate không cho phép sửa trường bảo mật/hệ thống.
+        /// Body là JSON value trực tiếp (ví dụ: 5000000 hoặc "Nguyễn Văn A" hoặc null).
+        /// </summary>
+        [HttpPatch("{id:guid}/{fieldName}")]
+        public async Task<ActionResult<ServiceResponse>> PatchField(Guid id, string fieldName, [FromBody] JsonElement value)
+        {
+            var response = await _baseService.PatchFieldAsync(id, fieldName, value);
 
             if (!response.IsSuccess)
             {

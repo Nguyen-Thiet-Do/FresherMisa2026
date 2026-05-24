@@ -14,7 +14,7 @@ namespace FresherMisa2026.Application.Services
         private readonly ICandidateRepository _candidateRepository;
         private readonly IFileService _fileService;
         private static readonly Regex EmailRegex = new(@"^[^\s@]+@[^\s@]+\.[^\s@]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex PhoneNumberRegex = new(@"^[A-Za-z]{9}$", RegexOptions.Compiled);       // @"^(?:0|\+84)(?:3|5|7|8|9)\d{8}$"
+        private static readonly Regex PhoneNumberRegex = new(@"^(?:0|\+84)(?:3|5|7|8|9)\d{8}$", RegexOptions.Compiled);
         public CandidateService(
             IBaseRepository<Candidate> baseRepository,
             ICandidateRepository candidateRepository,

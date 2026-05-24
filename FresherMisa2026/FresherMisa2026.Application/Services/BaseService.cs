@@ -6,6 +6,7 @@ using FresherMisa2026.Entities.Enums;
 using FresherMisa2026.Entities.Extensions;
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Text.Json;
 
 namespace FresherMisa2026.Application.Services
 {
@@ -21,6 +22,17 @@ namespace FresherMisa2026.Application.Services
         private readonly string _tableName;
         private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _cachedProperties = new();
         private const string SearchFieldSeparator = ";";
+
+        // Các trường hệ thống từ BaseModel — không cho phép PATCH
+        private static readonly HashSet<string> _securityFields = new(StringComparer.OrdinalIgnoreCase)
+        {
+            nameof(BaseModel.CreatedBy),
+            nameof(BaseModel.CreateDate),
+            nameof(BaseModel.ModifiedBy),
+            nameof(BaseModel.ModifiedDate),
+            nameof(BaseModel.State),
+            nameof(BaseModel.IsDeleted),
+        };
         #endregion
 
         #region Constructer
@@ -46,6 +58,14 @@ namespace FresherMisa2026.Application.Services
             DevMessage = devMessage,
             Data = userMessage,
             UserMessage = userMessage
+        };
+
+        protected static ServiceResponse CreateValidationErrorResponse(List<ValidationError> errors) => new()
+        {
+            IsSuccess = false,
+            Code = (int)ResponseCode.BadRequest,
+            DevMessage = "Validate thất bại",
+            Data = errors
         };
 
         private static PropertyInfo[] GetCachedProperties(Type entityType)
@@ -123,6 +143,108 @@ namespace FresherMisa2026.Application.Services
             }
 
             return CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi để xóa");
+        }
+
+        /// <summary>
+        /// Xóa nhiều bản ghi trong một transaction — fail-fast: rollback toàn bộ nếu có 1 ID lỗi
+        /// </summary>
+        /// <param name="ids">Danh sách Id cần xóa</param>
+        /// <returns>ServiceResponse</returns>
+        /// CREATED BY: DVHAI (19/05/2026)
+        public async Task<ServiceResponse> DeleteManyAsync(List<Guid> ids)
+        {
+            if (ids == null || ids.Count == 0)
+                return CreateErrorResponse(ResponseCode.BadRequest, "Danh sách Id không được rỗng");
+
+            var entitiesToDelete = new List<TEntity>();
+            foreach (var id in ids)
+            {
+                if (id == Guid.Empty)
+                    return CreateErrorResponse(ResponseCode.BadRequest, $"Id '{id}' không hợp lệ");
+
+                var entity = await _baseRepository.GetEntityByIDAsync(id);
+                if (entity == null)
+                    return CreateErrorResponse(ResponseCode.NotFound, $"Không tìm thấy bản ghi với Id '{id}'");
+
+                bool canDelete = await ValidateBeforeDeleteAsync(id);
+                if (!canDelete)
+                {
+                    var msg = await GetDeleteValidationMessageAsync(id);
+                    return CreateErrorResponse(ResponseCode.BadRequest, msg ?? "Không thể xóa bản ghi này");
+                }
+
+                entitiesToDelete.Add(entity);
+            }
+
+            int rowAffects = await _baseRepository.DeleteManyAsync(ids);
+
+            if (rowAffects > 0)
+            {
+                foreach (var entity in entitiesToDelete)
+                    AfterDelete(entity);
+                return CreateSuccessResponse(rowAffects);
+            }
+
+            return CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi để xóa");
+        }
+
+        /// <summary>
+        /// Xóa nhiều bản ghi — partial result: tiếp tục xóa dù có ID thất bại, trả về succeeded/failed
+        /// </summary>
+        /// <param name="ids">Danh sách Id cần xóa</param>
+        /// <returns>ServiceResponse chứa BulkDeleteResult</returns>
+        /// CREATED BY: DVHAI (19/05/2026)
+        public async Task<ServiceResponse> DeleteManyPartialAsync(List<Guid> ids)
+        {
+            if (ids == null || ids.Count == 0)
+                return CreateErrorResponse(ResponseCode.BadRequest, "Danh sách Id không được rỗng");
+
+            var result = new BulkDeleteResult();
+
+            foreach (var id in ids)
+            {
+                if (id == Guid.Empty)
+                {
+                    result.Failed.Add(new BulkDeleteFailedItem(id, "Id không hợp lệ"));
+                    continue;
+                }
+
+                try
+                {
+                    var entity = await _baseRepository.GetEntityByIDAsync(id);
+                    if (entity == null)
+                    {
+                        result.Failed.Add(new BulkDeleteFailedItem(id, "Không tìm thấy bản ghi"));
+                        continue;
+                    }
+
+                    bool canDelete = await ValidateBeforeDeleteAsync(id);
+                    if (!canDelete)
+                    {
+                        var msg = await GetDeleteValidationMessageAsync(id);
+                        result.Failed.Add(new BulkDeleteFailedItem(id, msg ?? "Không thể xóa bản ghi này"));
+                        continue;
+                    }
+
+                    int rows = await _baseRepository.DeleteAsync(id);
+                    if (rows > 0)
+                    {
+                        AfterDelete(entity);
+                        OnAfterDelete(id, rows);
+                        result.Succeeded.Add(id);
+                    }
+                    else
+                    {
+                        result.Failed.Add(new BulkDeleteFailedItem(id, "Xóa thất bại"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Failed.Add(new BulkDeleteFailedItem(id, ex.Message));
+                }
+            }
+
+            return CreateSuccessResponse(result);
         }
 
         /// <summary>
@@ -218,11 +340,7 @@ namespace FresherMisa2026.Application.Services
                 return CreateSuccessResponse(result);
             }
 
-            return CreateErrorResponse(
-                ResponseCode.BadRequest, 
-                "Validate thất bại", 
-                string.Join("; ", errors.Select(e => e.Message))
-            );
+            return CreateValidationErrorResponse(errors);
         }
 
         /// <summary>
@@ -266,11 +384,7 @@ namespace FresherMisa2026.Application.Services
             }
 
             //3. Validate fail - trả về BadRequest
-            return CreateErrorResponse(
-                ResponseCode.BadRequest,
-                "Validate thất bại",
-                string.Join("; ", errors.Select(e => e.Message))
-            );
+            return CreateValidationErrorResponse(errors);
         }
 
         /// <summary>
@@ -304,6 +418,94 @@ namespace FresherMisa2026.Application.Services
             };
 
             return CreateSuccessResponse(response);
+        }
+
+        /// <summary>
+        /// Cập nhật một trường cụ thể — validate trường bảo mật trước khi ghi
+        /// </summary>
+        /// <param name="entityId">Id bản ghi</param>
+        /// <param name="fieldName">Tên trường cần cập nhật</param>
+        /// <param name="value">Giá trị mới dưới dạng JSON</param>
+        /// <returns>ServiceResponse</returns>
+        /// CREATED BY: NTDo (24/05/2026)
+        public async Task<ServiceResponse> PatchFieldAsync(Guid entityId, string fieldName, JsonElement value)
+        {
+            if (entityId == Guid.Empty)
+                return CreateErrorResponse(ResponseCode.BadRequest, "Id không hợp lệ");
+
+            // 1. Tìm property theo tên (case-insensitive)
+            var properties = GetCachedProperties(typeof(TEntity));
+            var prop = properties.FirstOrDefault(p => p.Name.Equals(fieldName, StringComparison.OrdinalIgnoreCase));
+            if (prop == null)
+                return CreateErrorResponse(ResponseCode.BadRequest, $"Trường '{fieldName}' không tồn tại trên entity");
+
+            // 2. Không cho phép cập nhật khóa chính
+            var keyName = typeof(TEntity).GetKeyName();
+            if (prop.Name.Equals(keyName, StringComparison.OrdinalIgnoreCase))
+                return CreateErrorResponse(ResponseCode.BadRequest, $"Không được phép cập nhật trường khóa chính '{prop.Name}'");
+
+            // 3. Không cho phép cập nhật trường hệ thống của BaseModel
+            if (_securityFields.Contains(prop.Name))
+                return CreateErrorResponse(ResponseCode.BadRequest, $"Trường '{prop.Name}' là trường hệ thống, không được phép cập nhật");
+
+            // 4. Không cho phép cập nhật trường gắn [NotPatchable]
+            if (prop.IsDefined(typeof(NotPatchable), false))
+            {
+                var blockedDisplayName = typeof(TEntity).GetColumnDisplayName(prop.Name);
+                return CreateErrorResponse(ResponseCode.BadRequest, $"Trường '{blockedDisplayName}' không được phép cập nhật vì lý do bảo mật");
+            }
+
+            // 5. Kiểm tra bản ghi tồn tại
+            var existing = await _baseRepository.GetEntityByIDAsync(entityId);
+            if (existing == null)
+                return CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi");
+
+            // 6. Chuyển đổi giá trị JSON sang đúng kiểu của property
+            object? convertedValue;
+            try
+            {
+                convertedValue = ConvertJsonElementToType(value, prop.PropertyType);
+            }
+            catch
+            {
+                var displayName = typeof(TEntity).GetColumnDisplayName(prop.Name);
+                return CreateErrorResponse(ResponseCode.BadRequest, $"Giá trị không hợp lệ cho trường '{displayName}'");
+            }
+
+            // 7. Validate [IRequired] nếu field có annotation đó
+            if (prop.IsDefined(typeof(IRequired), false)
+                && (convertedValue == null || string.IsNullOrEmpty(convertedValue.ToString())))
+            {
+                var displayName = typeof(TEntity).GetColumnDisplayName(prop.Name);
+                return CreateValidationErrorResponse(new List<ValidationError>
+                {
+                    new(prop.Name, $"Trường {displayName} bắt buộc nhập")
+                });
+            }
+
+            int rows = await _baseRepository.PatchFieldAsync(entityId, prop.Name, convertedValue);
+
+            return rows > 0
+                ? CreateSuccessResponse(rows)
+                : CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi để cập nhật");
+        }
+
+        private static object? ConvertJsonElementToType(JsonElement element, Type targetType)
+        {
+            if (element.ValueKind == JsonValueKind.Null) return null;
+
+            var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+            if (underlying == typeof(string)) return element.GetString();
+            if (underlying == typeof(Guid)) return element.GetString();
+            if (underlying == typeof(int)) return element.GetInt32();
+            if (underlying == typeof(long)) return element.GetInt64();
+            if (underlying == typeof(double)) return element.GetDouble();
+            if (underlying == typeof(decimal)) return element.GetDecimal();
+            if (underlying == typeof(bool)) return element.GetBoolean();
+            if (underlying == typeof(DateTime)) return element.GetDateTime();
+
+            return element.GetString();
         }
         #endregion
 

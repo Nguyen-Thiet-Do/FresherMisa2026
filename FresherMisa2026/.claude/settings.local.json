@@ -15,7 +15,8 @@
       "Bash(Select-String -Pattern \"error|Error|Build succeeded|Build FAILED\")",
       "Bash(git commit *)",
       "PowerShell(Get-ChildItem -Path \"D:\\\\FresherMisa2026\\\\BE\\\\FresherMisa2026\\\\FresherMisa2026\" -Recurse -Directory | Select-Object -First 30 | ForEach-Object { $_.FullName })",
-      "Bash(Get-ChildItem -Path \"D:\\\\FresherMisa2026\\\\FresherMisa2026\" -Recurse -Name)"
+      "Bash(Get-ChildItem -Path \"D:\\\\FresherMisa2026\\\\FresherMisa2026\" -Recurse -Name)",
+      "Bash(git checkout *)"
     ]
   }
 }

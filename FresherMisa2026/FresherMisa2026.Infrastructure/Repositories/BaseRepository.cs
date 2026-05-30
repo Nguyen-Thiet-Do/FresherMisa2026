@@ -63,7 +63,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         }
 
         //Properties
-        string _connectionString = string.Empty;
+        protected string _connectionString = string.Empty;
         IConfiguration _configuration;
         protected string _tableName;
         protected string _keyName;
@@ -124,7 +124,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// </summary>
         /// <returns></returns>
         /// CREATED BY: DVHAI (11/07/2021)
-        private async Task<IEnumerable<TEntity>> GetEntitiesUsingCommandTextAsync()
+        protected virtual async Task<IEnumerable<TEntity>> GetEntitiesUsingCommandTextAsync()
         {
             var query = new StringBuilder($"select * from {_tableName}");
             int whereCount = 0;
@@ -192,7 +192,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// </summary>
         /// <param name="id"></param>
         /// <returns></returns>
-        private async Task<TEntity> GetEntitieByIdUsingCommandTextAsync(string id)
+        protected virtual async Task<TEntity> GetEntitieByIdUsingCommandTextAsync(string id)
         {
             var query = new StringBuilder($"select * from {_tableName}");
             int whereCount = 0;
@@ -521,20 +521,21 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// Approach 1: C# tự build câu SQL động — field names whitelist qua reflection, values luôn parameterized.
         /// Endpoint: POST /api/{entity}/AdvancedFilter
         /// </summary>
-        public async Task<(long Total, IEnumerable<TEntity> Data)> GetAdvancedFilterPagingAsync(AdvancedFilterRequest request)
+        public virtual async Task<(long Total, IEnumerable<TEntity> Data)> GetAdvancedFilterPagingAsync(AdvancedFilterRequest request)
         {
             var filters = request.Filters ?? new List<FilterCondition>();
             var parameters = new DynamicParameters();
-            var whereParts = new List<string>();
 
+            // mandatory conditions — luôn AND (IsDeleted...)
+            var mandatoryParts = new List<string>();
             if (_modelType.GetHasDeletedColumn())
-                whereParts.Add("IsDeleted = FALSE");
+                mandatoryParts.Add("IsDeleted = FALSE");
 
-            BuildFilterConditions(filters, parameters, whereParts);
+            // user conditions — nối theo Logic (And/Or)
+            var userParts = new List<string>();
+            BuildFilterConditions(filters, parameters, userParts);
 
-            var whereSection = whereParts.Count > 0
-                ? $"WHERE {string.Join(" AND ", whereParts)}"
-                : string.Empty;
+            var whereSection = BuildWhereSection(mandatoryParts, userParts, request.Logic);
 
             var orderBy = BuildSortSql(request.Sort);
             var pageIndex = Math.Max(1, request.PageIndex);
@@ -557,6 +558,26 @@ namespace FresherMisa2026.Infrastructure.Repositories
         }
 
         /// <summary>
+        /// Ghép mandatory (luôn AND) và user conditions (theo logic) thành WHERE clause.
+        /// Kết quả: WHERE mandatory1 AND mandatory2 AND (user1 OR/AND user2 ...)
+        /// </summary>
+        protected static string BuildWhereSection(List<string> mandatoryParts, List<string> userParts, FilterLogic logic)
+        {
+            var parts = new List<string>(mandatoryParts);
+
+            if (userParts.Count > 0)
+            {
+                var sep = logic == FilterLogic.Or ? " OR " : " AND ";
+                var userBlock = userParts.Count == 1
+                    ? userParts[0]
+                    : $"({string.Join(sep, userParts)})";
+                parts.Add(userBlock);
+            }
+
+            return parts.Count > 0 ? $"WHERE {string.Join(" AND ", parts)}" : string.Empty;
+        }
+
+        /// <summary>
         /// Approach 2: Truyền filters dưới dạng JSON vào stored procedure — SP tự build WHERE.
         /// C# vẫn validate field names trước khi gọi SP.
         /// Endpoint: POST /api/{entity}/AdvancedFilterProc
@@ -575,6 +596,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
             parameters.Add("@v_pageSize", Math.Max(1, request.PageSize));
             parameters.Add("@v_sort", request.Sort ?? string.Empty);
             parameters.Add("@v_filters", JsonSerializer.Serialize(filters));
+            parameters.Add("@v_logic", (int)request.Logic);
 
             using var reader = await connection.QueryMultipleAsync(
                 new CommandDefinition(store, parameters, commandType: CommandType.StoredProcedure));
@@ -605,7 +627,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// Build ORDER BY từ sort string (ví dụ: "-Salary,+EmployeeName").
         /// Field names được validate qua reflection — không thể inject.
         /// </summary>
-        private string BuildSortSql(string? sort)
+        protected string BuildSortSql(string? sort)
         {
             if (string.IsNullOrWhiteSpace(sort))
                 return $"ORDER BY `{_keyName}` DESC";
@@ -636,7 +658,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// Build danh sách WHERE conditions từ filters.
         /// Field names: whitelist qua reflection → safe. Values: Dapper parameters → safe.
         /// </summary>
-        private void BuildFilterConditions(List<FilterCondition> filters, DynamicParameters parameters, List<string> whereParts)
+        protected void BuildFilterConditions(List<FilterCondition> filters, DynamicParameters parameters, List<string> whereParts)
         {
             var validProps = _modelType.GetProperties()
                 .ToDictionary(p => p.Name, p => p, StringComparer.OrdinalIgnoreCase);

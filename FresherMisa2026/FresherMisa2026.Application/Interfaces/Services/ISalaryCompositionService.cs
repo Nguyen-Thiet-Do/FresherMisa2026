@@ -1,0 +1,54 @@
+using FresherMisa2026.Entities;
+using FresherMisa2026.Entities.Enums;
+using FresherMisa2026.Entities.SalaryComposition;
+using FresherMisa2026.Entities.SalaryComposition.DTO;
+
+namespace FresherMisa2026.Application.Interfaces.Services
+{
+    public interface ISalaryCompositionService : IBaseService<SalaryComposition>
+    {
+        /// <summary>
+        /// Lọc thành phần lương theo nhiều điều kiện có phân trang
+        /// </summary>
+        /// Created By: Nguyen Thiet Do (2026-05-27)
+        Task<ServiceResponse> FilterAsync(SalaryCompositionFilterRequest request);
+
+        /// <summary>
+        /// Chuyển TPL hệ thống sang TPL đơn vị (Source = InheritedFromSystem)
+        /// </summary>
+        /// Created By: Nguyen Thiet Do (2026-05-27)
+        Task<ServiceResponse> InheritFromSystemAsync(Guid systemCompositionId);
+
+        /// <summary>
+        /// Chuyển nhiều TPL hệ thống sang TPL đơn vị — partial result
+        /// </summary>
+        /// Created By: Nguyen Thiet Do (2026-05-27)
+        Task<ServiceResponse> InheritFromSystemBatchAsync(List<Guid> systemCompositionIds);
+
+        /// <summary>
+        /// Lấy danh sách gợi ý (Code, Name, Description) cho ô nhập công thức — chỉ TPL đang theo dõi
+        /// </summary>
+        /// Created By: Nguyen Thiet Do (2026-05-27)
+        Task<ServiceResponse> GetSuggestionsAsync(string? search);
+
+        /// <summary>
+        /// Chuyển trạng thái theo dõi của TPL (Active ↔ Inactive)
+        /// </summary>
+        /// Created By: Nguyen Thiet Do (2026-05-27)
+        Task<ServiceResponse> SetStatusAsync(Guid id, SalaryCompositionStatus status);
+
+        /// <summary>
+        /// Chuyển trạng thái nhiều TPL cùng lúc — partial result
+        /// </summary>
+        /// Created By: Nguyen Thiet Do (2026-05-28)
+        Task<ServiceResponse> SetStatusBulkAsync(List<Guid> ids, SalaryCompositionStatus status);
+
+        /// <summary>
+        /// Lọc nâng cao 4 phần: search (mã/tên), trạng thái, đơn vị, field conditions
+        /// </summary>
+        Task<ServiceResponse> AdvancedFilterAsync(SalaryCompositionAdvancedFilterRequest request);
+
+        /// <summary>Lọc nâng cao 4 phần qua stored procedure</summary>
+        Task<ServiceResponse> AdvancedFilterWithProcAsync(SalaryCompositionAdvancedFilterRequest request);
+    }
+}

@@ -18,6 +18,11 @@ namespace FresherMisa2026.Application
             services.AddScoped<IPositionService, PositionService>();
             services.AddScoped<IEmployeeService, EmployeeService>();
             services.AddScoped<ICandidateService, CandidateService>();
+            services.AddScoped<ISalaryCompositionService, SalaryCompositionService>();
+            services.AddScoped<IOrganizationService, OrganizationService>();
+            services.AddScoped<ISalaryComponentTypeService, SalaryComponentTypeService>();
+            services.AddScoped<ISalaryCompositionSystemService, SalaryCompositionSystemService>();
+            services.AddScoped<IGridConfigService, GridConfigService>();
 
             return services;
         }

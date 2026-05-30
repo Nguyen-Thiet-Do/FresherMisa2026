@@ -149,6 +149,55 @@ Khi validation lỗi: `data` chứa chuỗi lỗi join bằng `"; "`, `code = 40
 8. **DI:** Đăng ký trong `Application/ServiceExtensions.cs` và `Infrastructure/ServiceExtensions.cs`
 9. **Query.json:** Thêm inline queries nếu cần `SQLExtension.GetQuery(...)`
 
+## Module Tiền Lương (nhánh `amis-tien-luong`)
+
+### Database
+
+Schema riêng: `amis_tien_luong` (localhost:3306, cùng user/password). Script khởi tạo: `docs/thanh_phan_luong_amis.sql`.
+
+### Entities và bảng DB
+
+| Entity (C#) | Bảng MySQL | `hasDeletedColumn` | Unique |
+|---|---|---|---|
+| `Organization` | `pa_organization` | `true` | `Code` |
+| `SalaryComponentType` | `pa_salary_component_type` | `false` | `Code` |
+| `SalaryCompositionSystem` | `pa_salary_composition_system` | `false` | `Code` |
+| `SalaryComposition` | `pa_salary_composition` | `true` | `Code` |
+| `GridConfig` | `pa_grid_config` | `false` | — (composite: UserID+GridCode+ColumnKey) |
+
+### Enums (tất cả trong `Entities/Enums/`)
+
+| Enum | Dùng ở |
+|---|---|
+| `SalaryNature` | Income=1, Deduction=2, Information=3, Other=4 |
+| `SalaryTaxType` | Taxable=1, FullyExempt=2, PartiallyExempt=3 |
+| `SalaryValueType` | Currency=1, Number=2, Percentage=3 |
+| `SalaryValueMode` | AutoSum=1, Formula=2 |
+| `SalaryCompositionSource` | Custom=1, InheritedFromSystem=2 |
+| `SalaryCompositionStatus` | Inactive=0, Active=1 |
+
+### Business Rules quan trọng
+
+| BR | Mô tả | Nơi enforce |
+|---|---|---|
+| BR-01 | `Code` của `SalaryComposition` **không được sửa sau khi lưu** | `ValidateBeforeUpdateAsync` trong Service |
+| BR-05 | `TaxType` chỉ có ý nghĩa khi `Nature = Income` | `ValidateCustom` trong Service |
+| BR-07 | Dùng `Status = Inactive` thay vì xóa khi không còn dùng | Convention người dùng |
+| BR-08 | TPL mặc định của hệ thống (`Source = InheritedFromSystem`) không được xóa | `ValidateBeforeDeleteAsync` trong Service |
+| BR-09 | `AllowExceedNorm = true` cho phép giá trị vượt `NormFormula` (định mức) | Logic tính lương |
+
+### Luồng sử dụng thực tế
+
+```
+SalaryCompositionSystem (danh mục hệ thống, seed sẵn)
+    → SalaryComposition (đơn vị chọn vào + tự tạo thêm)
+        → Mẫu bảng lương → Tính lương nhân viên
+```
+
+### Entity-specific endpoints (dự kiến)
+
+**SalaryCompositions** (`/api/SalaryCompositions`): `GET /filter` (lọc theo Nature, Status, ComponentTypeID, OrganizationID, Source)
+
 ## Conventions
 
 - **Naming:** PascalCase cho class/method/property; camelCase cho biến local; prefix `_` cho private fields

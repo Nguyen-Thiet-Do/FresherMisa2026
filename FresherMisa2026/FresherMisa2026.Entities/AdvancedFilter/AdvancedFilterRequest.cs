@@ -10,5 +10,8 @@ namespace FresherMisa2026.Entities.AdvancedFilter
 
         /// <summary>Danh sách điều kiện lọc — null hoặc rỗng thì trả toàn bộ có phân trang</summary>
         public List<FilterCondition>? Filters { get; set; }
+
+        /// <summary>Logic nối các conditions — And (mặc định) hoặc Or</summary>
+        public FilterLogic Logic { get; set; } = FilterLogic.And;
     }
 }

@@ -78,7 +78,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Xóa nhiều phần tử trong một transaction — fail-fast: rollback toàn bộ nếu có 1 ID lỗi
         /// </summary>
         [HttpPost("bulk-delete")]
-        public async Task<ActionResult<ServiceResponse>> DeleteMany([FromBody] List<Guid> ids)
+        public virtual async Task<ActionResult<ServiceResponse>> DeleteMany([FromBody] List<Guid> ids)
         {
             var response = await _baseService.DeleteManyAsync(ids);
 
@@ -95,7 +95,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Xóa nhiều phần tử — partial result: tiếp tục xóa dù có ID thất bại
         /// </summary>
         [HttpPost("bulk-delete/partial")]
-        public async Task<ActionResult<ServiceResponse>> DeleteManyPartial([FromBody] List<Guid> ids)
+        public virtual async Task<ActionResult<ServiceResponse>> DeleteManyPartial([FromBody] List<Guid> ids)
         {
             var response = await _baseService.DeleteManyPartialAsync(ids);
 
@@ -109,7 +109,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Xóa một phần tử
         /// </summary>
         [HttpDelete("{id:guid}")]
-        public async Task<ActionResult<ServiceResponse>> DeleteByID(Guid id)
+        public virtual async Task<ActionResult<ServiceResponse>> DeleteByID(Guid id)
         {
             var response = await _baseService.DeleteByIDAsync(id);
             
@@ -126,7 +126,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Thêm một thực thể mới
         /// </summary>
         [HttpPost]
-        public async Task<ActionResult<ServiceResponse>> Post([FromBody] TEntity entity)
+        public virtual async Task<ActionResult<ServiceResponse>> Post([FromBody] TEntity entity)
         {
             var response = await _baseService.InsertAsync(entity);
 
@@ -140,7 +140,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Lọc nâng cao — Approach 1: Dynamic SQL (C# build WHERE, an toàn injection)
         /// </summary>
         [HttpPost("AdvancedFilter")]
-        public async Task<ActionResult<ServiceResponse>> AdvancedFilter([FromBody] AdvancedFilterRequest request)
+        public virtual async Task<ActionResult<ServiceResponse>> AdvancedFilter([FromBody] AdvancedFilterRequest request)
         {
             var response = await _baseService.AdvancedFilterPagingAsync(request);
             return Ok(response);
@@ -150,7 +150,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Lọc nâng cao — Approach 2: Stored Procedure (SP nhận JSON, tự build WHERE)
         /// </summary>
         [HttpPost("AdvancedFilterProc")]
-        public async Task<ActionResult<ServiceResponse>> AdvancedFilterProc([FromBody] AdvancedFilterRequest request)
+        public virtual async Task<ActionResult<ServiceResponse>> AdvancedFilterProc([FromBody] AdvancedFilterRequest request)
         {
             var response = await _baseService.AdvancedFilterPagingWithProcAsync(request);
             return Ok(response);
@@ -160,7 +160,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Sửa một thực thể
         /// </summary>
         [HttpPut("{id:guid}")]
-        public async Task<ActionResult<ServiceResponse>> Put(Guid id, [FromBody] TEntity entity)
+        public virtual async Task<ActionResult<ServiceResponse>> Put(Guid id, [FromBody] TEntity entity)
         {
             var response = await _baseService.UpdateAsync(id, entity);
 
@@ -179,7 +179,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Body là JSON value trực tiếp (ví dụ: 5000000 hoặc "Nguyễn Văn A" hoặc null).
         /// </summary>
         [HttpPatch("{id:guid}/{fieldName}")]
-        public async Task<ActionResult<ServiceResponse>> PatchField(Guid id, string fieldName, [FromBody] JsonElement value)
+        public virtual async Task<ActionResult<ServiceResponse>> PatchField(Guid id, string fieldName, [FromBody] JsonElement value)
         {
             var response = await _baseService.PatchFieldAsync(id, fieldName, value);
 

@@ -12,6 +12,12 @@ namespace FresherMisa2026.Entities
         public List<BulkDeleteFailedItem> Failed { get; set; } = new();
     }
 
+    public class BulkInheritResult
+    {
+        public List<Guid> Succeeded { get; set; } = new();
+        public List<BulkDeleteFailedItem> Failed { get; set; } = new();
+    }
+
     public class ServiceResponse
     {
         public bool IsSuccess { get; set; }

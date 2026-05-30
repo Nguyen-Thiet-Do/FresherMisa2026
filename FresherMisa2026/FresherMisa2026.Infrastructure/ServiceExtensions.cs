@@ -16,6 +16,8 @@ namespace FresherMisa2026.Infrastructure
         public static IServiceCollection AddInfrastructure(
             this IServiceCollection services)
         {
+            Dapper.SqlMapper.AddTypeHandler(new GuidTypeHandler());
+
             //base
             services.AddScoped(typeof(IBaseRepository<>), typeof(BaseRepository<>));
 
@@ -23,6 +25,11 @@ namespace FresherMisa2026.Infrastructure
             services.AddScoped<IPositionRepository, PositionRepository>();
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
             services.AddScoped<ICandidateRepository, CandidateRepository>();
+            services.AddScoped<ISalaryCompositionRepository, SalaryCompositionRepository>();
+            services.AddScoped<IOrganizationRepository, OrganizationRepository>();
+            services.AddScoped<ISalaryComponentTypeRepository, SalaryComponentTypeRepository>();
+            services.AddScoped<ISalaryCompositionSystemRepository, SalaryCompositionSystemRepository>();
+            services.AddScoped<IGridConfigRepository, GridConfigRepository>();
 
             services.AddScoped<IFileService, FileService>();
 

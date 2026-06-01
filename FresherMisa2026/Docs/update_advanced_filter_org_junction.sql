@@ -1,16 +1,14 @@
-USE amis_tien_luong;
-
-DROP PROCEDURE IF EXISTS `Proc_pa_salary_composition_AdvancedFilterPaging`;
-delimiter ;;
-CREATE PROCEDURE `Proc_pa_salary_composition_AdvancedFilterPaging`(
+DROP PROCEDURE IF EXISTS Proc_pa_salary_composition_AdvancedFilterPaging;
+DELIMITER $$
+CREATE PROCEDURE Proc_pa_salary_composition_AdvancedFilterPaging(
   IN v_pageIndex    INT,
   IN v_pageSize     INT,
   IN v_sort         VARCHAR(500),
-  IN v_search       VARCHAR(255),   -- Phần 1: search Code hoặc Name (OR)
-  IN v_status       TINYINT,        -- Phần 2: trạng thái (NULL = không lọc)
-  IN v_org_ids      JSON,           -- Phần 3: danh sách OrganizationID (NULL = không lọc)
-  IN v_filters      JSON,           -- Phần 4: field conditions
-  IN v_filter_logic TINYINT         -- 0 = AND (default), 1 = OR cho Phần 4
+  IN v_search       VARCHAR(255),
+  IN v_status       TINYINT,
+  IN v_org_ids      JSON,
+  IN v_filters      JSON,
+  IN v_filter_logic TINYINT
 )
 BEGIN
   DECLARE v_offset INT;
@@ -37,18 +35,16 @@ BEGIN
   IF v_pageSize  IS NULL OR v_pageSize  < 1 THEN SET v_pageSize  = 20; END IF;
   SET v_offset = (v_pageIndex - 1) * v_pageSize;
 
-  -- Phần 1: search Code hoặc Name (OR)
   IF v_search IS NOT NULL AND v_search != '' THEN
     SET v_where = CONCAT(v_where, ' AND (sc.`Code` LIKE ', QUOTE(CONCAT('%', v_search, '%')),
                          ' OR sc.`Name` LIKE ', QUOTE(CONCAT('%', v_search, '%')), ')');
   END IF;
 
-  -- Phần 2: trạng thái
   IF v_status IS NOT NULL THEN
     SET v_where = CONCAT(v_where, ' AND sc.`Status` = ', v_status);
   END IF;
 
-  -- Phần 3: đơn vị áp dụng (JSON array of string GUIDs)
+  -- Phan 3: don vi ap dung -- dung junction table
   IF v_org_ids IS NOT NULL AND JSON_LENGTH(v_org_ids) > 0 THEN
     BEGIN
       DECLARE v_org_i   INT  DEFAULT 0;
@@ -59,11 +55,10 @@ BEGIN
         SET v_in_orgs = CONCAT(v_in_orgs, QUOTE(JSON_UNQUOTE(JSON_EXTRACT(v_org_ids, CONCAT('$[', v_org_i, ']')))));
         SET v_org_i = v_org_i + 1;
       END WHILE;
-      SET v_where = CONCAT(v_where, ' AND sc.`OrganizationID` IN (', v_in_orgs, ')');
+      SET v_where = CONCAT(v_where, ' AND sc.`SalaryCompositionID` IN (SELECT SalaryCompositionID FROM pa_salary_composition_organization WHERE OrganizationID IN (', v_in_orgs, '))');
     END;
   END IF;
 
-  -- Phần 4: lọc nâng cao các trường
   IF v_filters IS NOT NULL AND JSON_LENGTH(v_filters) > 0 THEN
     SET v_filter_count = JSON_LENGTH(v_filters);
     WHILE v_i < v_filter_count DO
@@ -115,10 +110,8 @@ BEGIN
       END IF;
 
       IF v_cond IS NOT NULL THEN
-        IF v_user_conds IS NULL THEN
-          SET v_user_conds = v_cond;
-        ELSE
-          SET v_user_conds = CONCAT(v_user_conds, IF(IFNULL(v_filter_logic, 0) = 1, ' OR ', ' AND '), v_cond);
+        IF v_user_conds IS NULL THEN SET v_user_conds = v_cond;
+        ELSE SET v_user_conds = CONCAT(v_user_conds, IF(IFNULL(v_filter_logic, 0) = 1, ' OR ', ' AND '), v_cond);
         END IF;
       END IF;
       SET v_i = v_i + 1;
@@ -129,7 +122,6 @@ BEGIN
     END IF;
   END IF;
 
-  -- Build ORDER BY
   IF v_sort IS NOT NULL AND v_sort != '' THEN
     SET v_sort_count = 1 + (LENGTH(v_sort) - LENGTH(REPLACE(v_sort, ',', '')));
     SET v_sort_i = 1; SET v_order_by = 'ORDER BY ';
@@ -148,16 +140,16 @@ BEGIN
   END IF;
 
   SET @v_sql = CONCAT(
-    'SELECT sc.*, ct.Name AS ComponentTypeName, org.Name AS OrganizationName ',
+    'SELECT sc.*, ct.Name AS ComponentTypeName, ',
+    '(SELECT GROUP_CONCAT(sco.OrganizationID ORDER BY sco.OrganizationID SEPARATOR ",") FROM pa_salary_composition_organization sco WHERE sco.SalaryCompositionID = sc.SalaryCompositionID) AS OrganizationIDs, ',
+    '(SELECT GROUP_CONCAT(org2.Name ORDER BY sco2.OrganizationID SEPARATOR ", ") FROM pa_salary_composition_organization sco2 JOIN pa_organization org2 ON sco2.OrganizationID = org2.OrganizationID WHERE sco2.SalaryCompositionID = sc.SalaryCompositionID) AS OrganizationNames ',
     'FROM `pa_salary_composition` sc ',
-    'LEFT JOIN pa_salary_component_type ct  ON sc.ComponentTypeID = ct.ComponentTypeID ',
-    'LEFT JOIN pa_organization          org ON sc.OrganizationID  = org.OrganizationID ',
+    'LEFT JOIN pa_salary_component_type ct ON sc.ComponentTypeID = ct.ComponentTypeID ',
     'WHERE ', v_where, ' ', v_order_by, ' LIMIT ', v_pageSize, ' OFFSET ', v_offset
   );
   SET @v_count_sql = CONCAT('SELECT COUNT(*) FROM `pa_salary_composition` sc WHERE ', v_where);
 
   PREPARE stmt FROM @v_sql;       EXECUTE stmt;       DEALLOCATE PREPARE stmt;
   PREPARE stmt FROM @v_count_sql; EXECUTE stmt;       DEALLOCATE PREPARE stmt;
-END
-;;
-delimiter ;
+END$$
+DELIMITER ;

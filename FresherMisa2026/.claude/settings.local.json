@@ -33,7 +33,13 @@
       "Bash(python3 -m json.tool)",
       "Bash(python3 -c ' *)",
       "PowerShell(Get-Process *)",
-      "Bash(awk '{print $1}')"
+      "Bash(awk '{print $1}')",
+      "PowerShell(mysql *)",
+      "PowerShell(& cmd /c \"mysql -u root -p123456 amis_tien_luong < D:\\\\FresherMisa2026\\\\FresherMisa2026\\\\Docs\\\\update_advanced_filter_org_junction.sql 2>&1\")",
+      "Bash(Get-Process -Name \"dotnet\")",
+      "Bash(Stop-Process -Force)",
+      "Bash(Write-Host \"Killed\")",
+      "Bash(pkill -f \"dotnet\")"
     ]
   }
 }

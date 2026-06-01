@@ -51,6 +51,12 @@ namespace FresherMisa2026.Entities.SalaryCompositionSystem
         /// <summary>Công thức định mức (mức trần)</summary>
         public string? NormFormula { get; set; }
 
+        /// <summary>Công thức phần chịu thuế TNCN — chỉ dùng khi TaxType = PartiallyExempt (3)</summary>
+        public string? TaxableFormula { get; set; }
+
+        /// <summary>Công thức phần miễn thuế TNCN — chỉ dùng khi TaxType = PartiallyExempt (3)</summary>
+        public string? ExemptFormula { get; set; }
+
         public string? Description { get; set; }
 
         public bool ShowOnPayslip { get; set; } = true;

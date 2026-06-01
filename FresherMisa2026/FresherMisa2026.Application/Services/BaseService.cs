@@ -3,6 +3,7 @@ using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.AdvancedFilter;
 using FresherMisa2026.Entities.Enums;
+using FresherMisa2026.Entities.Exceptions;
 using FresherMisa2026.Entities.Extensions;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -322,9 +323,11 @@ namespace FresherMisa2026.Application.Services
         /// <param name="entity">Thực thể cần thêm</param>
         /// <returns>ServiceResponse chứa kết quả</returns>
         /// CREATED BY: DVHAI (11/07/2021)
-        public async Task<ServiceResponse> InsertAsync(TEntity entity)
+        public virtual async Task<ServiceResponse> InsertAsync(TEntity entity)
         {
             entity.State = ModelSate.Add;
+            entity.CreateDate = DateTime.Now;
+            entity.CreatedBy = GetCurrentUser();
 
             //1. Validate tất cả các trường nếu được gắn thẻ
             var errors = Validate(entity);
@@ -335,9 +338,19 @@ namespace FresherMisa2026.Application.Services
             //2. Sử lí lỗi tương ứng
             if (errors.Count == 0)
             {
-                var result = await _baseRepository.InsertAsync(entity);
-                OnAfterInsert(entity, result);
-                return CreateSuccessResponse(result);
+                try
+                {
+                    var result = await _baseRepository.InsertAsync(entity);
+                    OnAfterInsert(entity, result);
+                    return CreateSuccessResponse(result);
+                }
+                catch (DuplicateEntityException ex)
+                {
+                    return CreateValidationErrorResponse(new List<ValidationError>
+                    {
+                        new ValidationError(ex.ColumnName, ex.Message)
+                    });
+                }
             }
 
             return CreateValidationErrorResponse(errors);
@@ -350,7 +363,7 @@ namespace FresherMisa2026.Application.Services
         /// <param name="entity">Thông tin bản ghi</param>
         /// <returns>ServiceResponse chứa kết quả</returns>
         /// CREATED BY: DVHAI (11/07/2021)
-        public async Task<ServiceResponse> UpdateAsync(Guid entityId, TEntity entity)
+        public virtual async Task<ServiceResponse> UpdateAsync(Guid entityId, TEntity entity)
         {
             if (entityId == Guid.Empty)
             {
@@ -365,6 +378,8 @@ namespace FresherMisa2026.Application.Services
 
             //1. Trạng thái
             entity.State = ModelSate.Update;
+            entity.ModifiedDate = DateTime.Now;
+            entity.ModifiedBy = GetCurrentUser();
 
             //2. Validate tất cả các trường nếu được gắn thẻ
             var errors = Validate(entity);
@@ -374,13 +389,23 @@ namespace FresherMisa2026.Application.Services
             
             if (errors.Count == 0)
             {
-                int rowAffects = await _baseRepository.UpdateAsync(entityId, entity);
-                if (rowAffects > 0)
+                try
                 {
-                    OnAfterUpdate(entityId, entity, rowAffects);
-                    return CreateSuccessResponse(rowAffects);
+                    int rowAffects = await _baseRepository.UpdateAsync(entityId, entity);
+                    if (rowAffects > 0)
+                    {
+                        OnAfterUpdate(entityId, entity, rowAffects);
+                        return CreateSuccessResponse(rowAffects);
+                    }
+                    return CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi để cập nhật");
                 }
-                return CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi để cập nhật");
+                catch (DuplicateEntityException ex)
+                {
+                    return CreateValidationErrorResponse(new List<ValidationError>
+                    {
+                        new ValidationError(ex.ColumnName, ex.Message)
+                    });
+                }
             }
 
             //3. Validate fail - trả về BadRequest
@@ -589,6 +614,12 @@ namespace FresherMisa2026.Application.Services
         {
             return Task.FromResult(new List<ValidationError>());
         }
+
+        /// <summary>
+        /// Lấy user hiện tại — override khi có module đăng nhập để trả về username từ JWT claim.
+        /// </summary>
+        protected virtual string? GetCurrentUser() => null;
+
         #endregion
     }
 

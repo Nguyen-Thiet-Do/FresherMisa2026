@@ -7,7 +7,11 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System;
+using System.Collections.Generic;
 using System.Data;
+using System.Linq;
+using System.Threading.Tasks;
 using SalaryCompositionEntity = FresherMisa2026.Entities.SalaryComposition.SalaryComposition;
 
 namespace FresherMisa2026.Infrastructure.Repositories
@@ -27,7 +31,6 @@ namespace FresherMisa2026.Infrastructure.Repositories
             IOptions<CacheSettings> cacheSettings)
             : base(configuration, cache, logger, cacheSettings)
         {
-            // Override sang database riêng của module tiền lương
             _connectionString = configuration.GetConnectionString("SalaryConnection")!;
         }
 
@@ -35,13 +38,29 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
         #region Methods
 
+        // Correlated subqueries để lấy danh sách đơn vị từ junction table
+        private const string OrgIDsSubquery = @"
+            (SELECT GROUP_CONCAT(sco.OrganizationID ORDER BY sco.OrganizationID SEPARATOR ',')
+             FROM pa_salary_composition_organization sco
+             WHERE sco.SalaryCompositionID = sc.SalaryCompositionID) AS OrganizationIDs";
+
+        private const string OrgNamesSubquery = @"
+            (SELECT GROUP_CONCAT(org2.Name ORDER BY sco2.OrganizationID SEPARATOR ', ')
+             FROM pa_salary_composition_organization sco2
+             JOIN pa_organization org2 ON sco2.OrganizationID = org2.OrganizationID
+             WHERE sco2.SalaryCompositionID = sc.SalaryCompositionID) AS OrganizationNames";
+
         private const string SelectWithJoin = @"
-            SELECT sc.*,
-                   ct.Name  AS ComponentTypeName,
-                   org.Name AS OrganizationName
+            SELECT sc.*, ct.Name AS ComponentTypeName,
+                   (SELECT GROUP_CONCAT(sco.OrganizationID ORDER BY sco.OrganizationID SEPARATOR ',')
+                    FROM pa_salary_composition_organization sco
+                    WHERE sco.SalaryCompositionID = sc.SalaryCompositionID) AS OrganizationIDs,
+                   (SELECT GROUP_CONCAT(org2.Name ORDER BY sco2.OrganizationID SEPARATOR ', ')
+                    FROM pa_salary_composition_organization sco2
+                    JOIN pa_organization org2 ON sco2.OrganizationID = org2.OrganizationID
+                    WHERE sco2.SalaryCompositionID = sc.SalaryCompositionID) AS OrganizationNames
             FROM   pa_salary_composition sc
-            LEFT JOIN pa_salary_component_type ct  ON sc.ComponentTypeID = ct.ComponentTypeID
-            LEFT JOIN pa_organization          org ON sc.OrganizationID  = org.OrganizationID";
+            LEFT JOIN pa_salary_component_type ct ON sc.ComponentTypeID = ct.ComponentTypeID";
 
         protected override async Task<IEnumerable<SalaryCompositionEntity>> GetEntitiesUsingCommandTextAsync()
         {
@@ -77,21 +96,25 @@ namespace FresherMisa2026.Infrastructure.Repositories
             parameters.Add("@_limit", pageSize);
             parameters.Add("@_offset", offset);
 
-            // Subquery: filter + page trên bảng gốc, outer JOIN chỉ để lấy name — tránh ambiguous columns
-            var dataSql = $@"SELECT subq.*, ct.Name AS ComponentTypeName, org.Name AS OrganizationName
+            var dataSql = $@"
+                SELECT subq.*, ct.Name AS ComponentTypeName,
+                       (SELECT GROUP_CONCAT(sco.OrganizationID ORDER BY sco.OrganizationID SEPARATOR ',')
+                        FROM pa_salary_composition_organization sco
+                        WHERE sco.SalaryCompositionID = subq.SalaryCompositionID) AS OrganizationIDs,
+                       (SELECT GROUP_CONCAT(org2.Name ORDER BY sco2.OrganizationID SEPARATOR ', ')
+                        FROM pa_salary_composition_organization sco2
+                        JOIN pa_organization org2 ON sco2.OrganizationID = org2.OrganizationID
+                        WHERE sco2.SalaryCompositionID = subq.SalaryCompositionID) AS OrganizationNames
                 FROM (SELECT * FROM `{_tableName}` {whereSection} {orderBy} LIMIT @_limit OFFSET @_offset) subq
-                LEFT JOIN pa_salary_component_type ct  ON subq.ComponentTypeID = ct.ComponentTypeID
-                LEFT JOIN pa_organization          org ON subq.OrganizationID  = org.OrganizationID
+                LEFT JOIN pa_salary_component_type ct ON subq.ComponentTypeID = ct.ComponentTypeID
                 {orderBy}";
 
             var countSql = $"SELECT COUNT(*) FROM `{_tableName}` {whereSection}";
 
             using var connection = CreateConnection();
             await connection.OpenAsync();
-
             var data = await connection.QueryAsync<SalaryCompositionEntity>(dataSql, parameters, commandType: CommandType.Text);
             var total = await connection.ExecuteScalarAsync<long>(countSql, parameters, commandType: CommandType.Text);
-
             return (total, data.ToList());
         }
 
@@ -103,38 +126,33 @@ namespace FresherMisa2026.Infrastructure.Repositories
             var parameters = new DynamicParameters();
             var conditions = new List<string> { "IsDeleted = FALSE" };
 
-            // Phần 1: search trên Code hoặc Name (OR)
             if (!string.IsNullOrWhiteSpace(request.Search))
             {
                 parameters.Add("@_search", $"%{request.Search.Trim()}%");
                 conditions.Add("(Code LIKE @_search OR Name LIKE @_search)");
             }
 
-            // Phần 2: trạng thái
             if (request.Status.HasValue)
             {
                 parameters.Add("@_status", (int)request.Status.Value);
                 conditions.Add("Status = @_status");
             }
 
-            // Phần 3: đơn vị áp dụng
+            // Phần 3: đơn vị áp dụng — query junction table
             if (request.OrganizationIDs != null && request.OrganizationIDs.Count > 0)
             {
                 var orgParams = request.OrganizationIDs.Select((_, i) => $"@_orgId{i}").ToList();
                 for (int i = 0; i < request.OrganizationIDs.Count; i++)
                     parameters.Add($"@_orgId{i}", request.OrganizationIDs[i].ToString());
-                conditions.Add($"OrganizationID IN ({string.Join(", ", orgParams)})");
+                conditions.Add($"SalaryCompositionID IN (SELECT SalaryCompositionID FROM pa_salary_composition_organization WHERE OrganizationID IN ({string.Join(", ", orgParams)}))");
             }
 
-            // Phần 4: lọc nâng cao theo trường
             var userParts = new List<string>();
             BuildFilterConditions(request.Filters ?? new(), parameters, userParts);
             if (userParts.Count > 0)
             {
                 var sep = request.FilterLogic == FilterLogic.Or ? " OR " : " AND ";
-                conditions.Add(userParts.Count == 1
-                    ? userParts[0]
-                    : $"({string.Join(sep, userParts)})");
+                conditions.Add(userParts.Count == 1 ? userParts[0] : $"({string.Join(sep, userParts)})");
             }
 
             var whereSection = $"WHERE {string.Join(" AND ", conditions)}";
@@ -145,10 +163,17 @@ namespace FresherMisa2026.Infrastructure.Repositories
             parameters.Add("@_limit", pageSize);
             parameters.Add("@_offset", (pageIndex - 1) * pageSize);
 
-            var dataSql = $@"SELECT subq.*, ct.Name AS ComponentTypeName, org.Name AS OrganizationName
+            var dataSql = $@"
+                SELECT subq.*, ct.Name AS ComponentTypeName,
+                       (SELECT GROUP_CONCAT(sco.OrganizationID ORDER BY sco.OrganizationID SEPARATOR ',')
+                        FROM pa_salary_composition_organization sco
+                        WHERE sco.SalaryCompositionID = subq.SalaryCompositionID) AS OrganizationIDs,
+                       (SELECT GROUP_CONCAT(org2.Name ORDER BY sco2.OrganizationID SEPARATOR ', ')
+                        FROM pa_salary_composition_organization sco2
+                        JOIN pa_organization org2 ON sco2.OrganizationID = org2.OrganizationID
+                        WHERE sco2.SalaryCompositionID = subq.SalaryCompositionID) AS OrganizationNames
                 FROM (SELECT * FROM `{_tableName}` {whereSection} {orderBy} LIMIT @_limit OFFSET @_offset) subq
-                LEFT JOIN pa_salary_component_type ct  ON subq.ComponentTypeID = ct.ComponentTypeID
-                LEFT JOIN pa_organization          org ON subq.OrganizationID  = org.OrganizationID
+                LEFT JOIN pa_salary_component_type ct ON subq.ComponentTypeID = ct.ComponentTypeID
                 {orderBy}";
 
             var countSql = $"SELECT COUNT(*) FROM `{_tableName}` {whereSection}";
@@ -216,8 +241,45 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
             var data = (await multi.ReadAsync<SalaryCompositionEntity>()).ToList();
             var total = await multi.ReadFirstAsync<long>();
-
             return (data, total);
+        }
+
+        #endregion
+
+        #region OVERRIDE METHODS
+
+        protected override async Task OnAfterInsertInTransactionAsync(
+            SalaryCompositionEntity entity, IDbConnection connection, IDbTransaction transaction)
+        {
+            if (entity.OrganizationIDs == null || entity.OrganizationIDs.Count == 0) return;
+
+            foreach (var orgId in entity.OrganizationIDs)
+            {
+                await connection.ExecuteAsync(
+                    "INSERT INTO pa_salary_composition_organization (SalaryCompositionID, OrganizationID) VALUES (@ScId, @OrgId)",
+                    new { ScId = entity.SalaryCompositionID.ToString(), OrgId = orgId.ToString() },
+                    transaction);
+            }
+        }
+
+        protected override async Task OnAfterUpdateInTransactionAsync(
+            SalaryCompositionEntity entity, Guid entityId, IDbConnection connection, IDbTransaction transaction)
+        {
+            // Xóa hết rồi insert lại — đơn giản và tránh diff logic
+            await connection.ExecuteAsync(
+                "DELETE FROM pa_salary_composition_organization WHERE SalaryCompositionID = @ScId",
+                new { ScId = entityId.ToString() },
+                transaction);
+
+            if (entity.OrganizationIDs == null || entity.OrganizationIDs.Count == 0) return;
+
+            foreach (var orgId in entity.OrganizationIDs)
+            {
+                await connection.ExecuteAsync(
+                    "INSERT INTO pa_salary_composition_organization (SalaryCompositionID, OrganizationID) VALUES (@ScId, @OrgId)",
+                    new { ScId = entityId.ToString(), OrgId = orgId.ToString() },
+                    transaction);
+            }
         }
 
         #endregion

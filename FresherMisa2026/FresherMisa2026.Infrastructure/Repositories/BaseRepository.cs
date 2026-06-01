@@ -338,6 +338,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     //2.Thực hiện thêm bản ghi
                     rowAffects = await connection.ExecuteAsync($"Proc_Insert{_tableName}", param: parameters, transaction: transaction, commandType: CommandType.StoredProcedure);
 
+                    await OnAfterInsertInTransactionAsync(entity, connection, transaction);
                     transaction.Commit();
                     _cache.Remove($"{_tableName}_all");
                     _logger.LogInformation("[XÓA CACHE] InsertAsync - Bảng: {Table} | Đã xóa cache: {Key}",
@@ -386,6 +387,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     //3. Kết nối tới CSDL:
                     rowAffects = await connection.ExecuteAsync($"Proc_Update{_tableName}", param: parameters, transaction: transaction, commandType: CommandType.StoredProcedure);
 
+                    await OnAfterUpdateInTransactionAsync(entity, entityId, connection, transaction);
                     transaction.Commit();
                     _cache.Remove($"{_tableName}_all");
                     _cache.Remove($"{_tableName}_{entityId}");
@@ -502,9 +504,15 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
             foreach (var property in properties)
             {
+                var propertyType = property.PropertyType;
+
+                // Skip collection types — not mappable as scalar SQL params
+                if (propertyType != typeof(string) &&
+                    typeof(System.Collections.IEnumerable).IsAssignableFrom(propertyType))
+                    continue;
+
                 var propertyName = property.Name;
                 var propertyValue = property.GetValue(entity);
-                var propertyType = property.PropertyType;
 
                 if (propertyType == typeof(Guid) || propertyType == typeof(Guid?))
                     parameters.Add($"@v_{propertyName}", propertyValue, DbType.String);
@@ -514,6 +522,14 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
             return parameters;
         }
+
+        /// <summary>Hook gọi trong transaction sau khi Insert SP — override để xử lý bảng phụ</summary>
+        protected virtual Task OnAfterInsertInTransactionAsync(TEntity entity, IDbConnection connection, IDbTransaction transaction)
+            => Task.CompletedTask;
+
+        /// <summary>Hook gọi trong transaction sau khi Update SP — override để xử lý bảng phụ</summary>
+        protected virtual Task OnAfterUpdateInTransactionAsync(TEntity entity, Guid entityId, IDbConnection connection, IDbTransaction transaction)
+            => Task.CompletedTask;
 
         #region Advanced Filter
 
@@ -896,7 +912,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 if (count > 0)
                 {
                     var displayName = _modelType.GetColumnDisplayName(column);
-                    throw new DuplicateEntityException($"{displayName} '{value}' đã tồn tại");
+                    throw new DuplicateEntityException($"{displayName} '{value}' đã tồn tại", column);
                 }
             }
         }

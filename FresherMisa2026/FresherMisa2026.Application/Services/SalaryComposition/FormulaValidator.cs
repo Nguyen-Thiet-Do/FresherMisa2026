@@ -1,6 +1,16 @@
 namespace FresherMisa2026.Application.Services;
 
 /// <summary>
+/// Kết quả validate công thức: lỗi cứng (cú pháp, mã không tồn tại) và cảnh báo mềm (mã ngừng theo dõi).
+/// </summary>
+public record FormulaValidationResult(bool IsValid, string? Error, IReadOnlyList<string> InactiveCodes)
+{
+    public static FormulaValidationResult Ok(IReadOnlyList<string> inactiveCodes) => new(true, null, inactiveCodes);
+    public static FormulaValidationResult Fail(string error) => new(false, error, Array.Empty<string>());
+    public static readonly FormulaValidationResult Empty = new(true, null, Array.Empty<string>());
+}
+
+/// <summary>
 /// Validator cú pháp công thức lương (ValueFormula / NormFormula).
 /// Hỗ trợ: SUM, IF, AND, OR, INT, TODAY và phép tính +, -, *, /.
 /// Phân biệt hoa thường với mã TPL.
@@ -13,28 +23,30 @@ public static class FormulaValidator
 
     /// <summary>
     /// Validate cú pháp công thức và tham chiếu mã TPL.
-    /// Trả về (true, null) nếu hợp lệ hoặc formula rỗng.
+    /// Mã tồn tại nhưng ngừng theo dõi → ghi vào InactiveCodes (cảnh báo mềm), không lỗi.
+    /// Mã không tồn tại / lỗi cú pháp → IsValid = false.
+    /// Trả về Empty nếu formula rỗng.
     /// </summary>
     /// Created By: Nguyen Thiet Do (2026-05-27)
-    public static (bool IsValid, string? Error) Validate(string? formula, HashSet<string> validCodes)
+    public static FormulaValidationResult Validate(string? formula, HashSet<string> activeCodes, HashSet<string>? allCodes = null)
     {
-        if (string.IsNullOrWhiteSpace(formula)) return (true, null);
+        if (string.IsNullOrWhiteSpace(formula)) return FormulaValidationResult.Empty;
 
         try
         {
             var tokens = Tokenize(formula);
-            var parser = new FormulaParser(tokens, validCodes);
+            var parser = new FormulaParser(tokens, activeCodes, allCodes);
             parser.ParseValueExpr();
 
             if (parser.Current.Kind != TokenKind.Eof)
                 throw new FormulaException(
                     $"Ký tự không mong đợi '{parser.Current.Value}' tại vị trí {parser.Current.Pos + 1}");
 
-            return (true, null);
+            return FormulaValidationResult.Ok(parser.InactiveCodes);
         }
         catch (FormulaException ex)
         {
-            return (false, ex.Message);
+            return FormulaValidationResult.Fail(ex.Message);
         }
     }
 
@@ -133,15 +145,19 @@ public static class FormulaValidator
     private sealed class FormulaParser
     {
         private readonly List<Token> _tokens;
-        private readonly HashSet<string> _validCodes;
+        private readonly HashSet<string> _activeCodes;
+        private readonly HashSet<string>? _allCodes;
+        private readonly List<string> _inactiveCodes = new();
         private int _pos;
 
         public Token Current => _tokens[_pos];
+        public IReadOnlyList<string> InactiveCodes => _inactiveCodes;
 
-        public FormulaParser(List<Token> tokens, HashSet<string> validCodes)
+        public FormulaParser(List<Token> tokens, HashSet<string> activeCodes, HashSet<string>? allCodes)
         {
             _tokens = tokens;
-            _validCodes = validCodes;
+            _activeCodes = activeCodes;
+            _allCodes = allCodes;
         }
 
         private Token Consume() => _tokens[_pos++];
@@ -220,9 +236,13 @@ public static class FormulaValidator
                 }
 
                 // TPL code reference — phân biệt hoa thường
-                if (!_validCodes.Contains(name))
-                    throw new FormulaException(
-                        $"Mã thành phần lương '{name}' không tồn tại hoặc không được theo dõi");
+                if (!_activeCodes.Contains(name))
+                {
+                    if (_allCodes != null && _allCodes.Contains(name))
+                        _inactiveCodes.Add(name); // cảnh báo mềm — tiếp tục parse
+                    else
+                        throw new FormulaException($"Mã thành phần lương '{name}' không tồn tại");
+                }
                 return;
             }
 

@@ -1,6 +1,7 @@
 using FresherMisa2026.Entities.Enums;
 using FresherMisa2026.Entities.Extensions;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace FresherMisa2026.Entities.SalaryComposition
@@ -27,9 +28,10 @@ namespace FresherMisa2026.Entities.SalaryComposition
         [Display(Name = "Tên thành phần lương")]
         public string Name { get; set; } = string.Empty;
 
-        public Guid? OrganizationID { get; set; }
+        /// <summary>Danh sách đơn vị áp dụng — lưu trong junction table pa_salary_composition_organization</summary>
+        public List<Guid>? OrganizationIDs { get; set; }
 
-        public string? OrganizationName { get; set; }
+        public string? OrganizationNames { get; set; }
 
         [IRequired]
         [Display(Name = "Loại thành phần")]
@@ -57,10 +59,23 @@ namespace FresherMisa2026.Entities.SalaryComposition
         /// <summary>Công thức tính giá trị (lưu nguyên văn chuỗi)</summary>
         public string? ValueFormula { get; set; }
 
-        public int? ValueScope { get; set; }
+        /// <summary>Phạm vi nhân viên khi ValueMode = AutoSum</summary>
+        public SalaryAutoSumScope? ValueScope { get; set; }
+
+        /// <summary>Cấp tổ chức khi ValueScope = OrgStructure (1=Cấp 1, 2=Cấp 2, ...)</summary>
+        public byte? ValueScopeLevel { get; set; }
+
+        /// <summary>FK tới TPL cần cộng tổng khi ValueMode = AutoSum</summary>
+        public Guid? SumSourceCompositionID { get; set; }
 
         /// <summary>Công thức định mức — mức trần của khoản lương</summary>
         public string? NormFormula { get; set; }
+
+        /// <summary>Công thức phần chịu thuế TNCN — chỉ dùng khi TaxType = PartiallyExempt (3)</summary>
+        public string? TaxableFormula { get; set; }
+
+        /// <summary>Công thức phần miễn thuế TNCN — chỉ dùng khi TaxType = PartiallyExempt (3)</summary>
+        public string? ExemptFormula { get; set; }
 
         /// <summary>BR-09: Cho phép vượt định mức</summary>
         public bool AllowExceedNorm { get; set; } = false;
@@ -75,6 +90,12 @@ namespace FresherMisa2026.Entities.SalaryComposition
 
         /// <summary>BR-07: Ngừng theo dõi thay vì xóa khi không còn dùng</summary>
         public SalaryCompositionStatus Status { get; set; } = SalaryCompositionStatus.Active;
+
+        /// <summary>
+        /// Không lưu DB — FE truyền true khi người dùng xác nhận lưu dù công thức có TPL ngừng theo dõi.
+        /// SP bỏ qua param thừa nên không ảnh hưởng.
+        /// </summary>
+        public bool IsSkipUnfollowedComposition { get; set; } = false;
 
         #endregion
     }

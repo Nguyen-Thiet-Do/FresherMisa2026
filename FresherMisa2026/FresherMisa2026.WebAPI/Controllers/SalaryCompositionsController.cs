@@ -42,9 +42,11 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// </summary>
         /// Created By: Nguyen Thiet Do (2026-05-27)
         [HttpPost("inherit/{systemCompositionId:guid}")]
-        public async Task<ActionResult<ServiceResponse>> InheritFromSystem(Guid systemCompositionId)
+        public async Task<ActionResult<ServiceResponse>> InheritFromSystem(
+            Guid systemCompositionId,
+            [FromBody] List<Guid>? organizationIds = null)
         {
-            var response = await _salaryCompositionService.InheritFromSystemAsync(systemCompositionId);
+            var response = await _salaryCompositionService.InheritFromSystemAsync(systemCompositionId, organizationIds);
             return StatusCode(response.Code, response);
         }
 
@@ -53,9 +55,9 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// </summary>
         /// Created By: Nguyen Thiet Do (2026-05-27)
         [HttpPost("inherit/batch")]
-        public async Task<ActionResult<ServiceResponse>> InheritFromSystemBatch([FromBody] List<Guid> systemCompositionIds)
+        public async Task<ActionResult<ServiceResponse>> InheritFromSystemBatch([FromBody] InheritFromSystemBatchRequest request)
         {
-            var response = await _salaryCompositionService.InheritFromSystemBatchAsync(systemCompositionIds);
+            var response = await _salaryCompositionService.InheritFromSystemBatchAsync(request);
             return Ok(response);
         }
 
@@ -108,6 +110,19 @@ namespace FresherMisa2026.WebAPI.Controllers
         }
 
         /// <summary>
+        /// Phân loại danh sách TPL thành DataExist / DataSystem / DataNotExist có phân trang.
+        /// Dùng trước khi xóa hoặc ngừng theo dõi hàng loạt để FE hiển thị cảnh báo phù hợp.
+        /// </summary>
+        /// Created By: Nguyen Thiet Do (2026-06-02)
+        [HttpPost("exit-data")]
+        public async Task<ActionResult<ServiceResponse>> ExitData([FromBody] ExitDataRequest request)
+        {
+            var response = await _salaryCompositionService.ExitDataAsync(request);
+            if (!response.IsSuccess) return BadRequest(response);
+            return Ok(response);
+        }
+
+        /// <summary>
         /// Gợi ý thành phần lương cho ô nhập công thức — trả về Code, Name, Description
         /// </summary>
         /// Created By: Nguyen Thiet Do (2026-05-27)
@@ -116,6 +131,30 @@ namespace FresherMisa2026.WebAPI.Controllers
         {
             var response = await _salaryCompositionService.GetSuggestionsAsync(search);
             return Ok(response);
+        }
+
+        /// <summary>
+        /// Thêm mới — trả HTTP 202 + isSuccess=false nếu công thức có TPL ngừng theo dõi (cần xác nhận).
+        /// FE set IsSkipUnfollowedComposition=true rồi gửi lại để lưu.
+        /// </summary>
+        public override async Task<ActionResult<ServiceResponse>> Post([FromBody] SalaryCompositionEntity entity)
+        {
+            var response = await _salaryCompositionService.InsertAsync(entity);
+            if (response.IsSuccess) return StatusCode((int)ResponseCode.Created, response);
+            if (response.Code == (int)ResponseCode.ConfirmationRequired) return StatusCode((int)ResponseCode.ConfirmationRequired, response);
+            return BadRequest(response);
+        }
+
+        /// <summary>
+        /// Cập nhật — tương tự Post: trả HTTP 202 nếu cần xác nhận.
+        /// </summary>
+        public override async Task<ActionResult<ServiceResponse>> Put(Guid id, [FromBody] SalaryCompositionEntity entity)
+        {
+            var response = await _salaryCompositionService.UpdateAsync(id, entity);
+            if (response.IsSuccess) return Ok(response);
+            if (response.Code == (int)ResponseCode.ConfirmationRequired) return StatusCode((int)ResponseCode.ConfirmationRequired, response);
+            if (response.Code == (int)ResponseCode.NotFound) return NotFound(response);
+            return BadRequest(response);
         }
 
         [NonAction]

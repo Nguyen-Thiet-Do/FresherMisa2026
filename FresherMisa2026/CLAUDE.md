@@ -185,6 +185,7 @@ Schema riêng: `amis_tien_luong` (localhost:3306, cùng user/password). Script k
 | BR-07 | Dùng `Status = Inactive` thay vì xóa khi không còn dùng | Convention người dùng |
 | BR-08 | TPL mặc định của hệ thống (`Source = InheritedFromSystem`) không được xóa | `ValidateBeforeDeleteAsync` trong Service |
 | BR-09 | `AllowExceedNorm = true` cho phép giá trị vượt `NormFormula` (định mức) | Logic tính lương |
+| BR-10 | TPL kế thừa từ hệ thống (`Source = InheritedFromSystem`) chỉ được sửa: `Name`, `OrganizationIDs`, `Description`, `ShowOnPayslip`, `Status`. Mọi field còn lại bị lock — `ValidateBeforeUpdateAsync` trả 400 kèm tên các field vi phạm | `GetLockedFieldChanges` trong Service |
 
 ### Luồng sử dụng thực tế
 

@@ -17,6 +17,7 @@ namespace FresherMisa2026.Infrastructure
             this IServiceCollection services)
         {
             Dapper.SqlMapper.AddTypeHandler(new GuidTypeHandler());
+            Dapper.SqlMapper.AddTypeHandler(new TypeHandlers.GuidListTypeHandler());
 
             //base
             services.AddScoped(typeof(IBaseRepository<>), typeof(BaseRepository<>));

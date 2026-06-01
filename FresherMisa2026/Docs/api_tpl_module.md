@@ -11,9 +11,11 @@
 1. [Quy ước chung](#1-quy-ước-chung)
 2. [Enum reference](#2-enum-reference)
 3. [Model reference](#3-model-reference)
+   - [3.6 Luồng xác nhận khi công thức có TPL ngừng theo dõi](#36-luồng-xác-nhận-khi-công-thức-có-tpl-ngừng-theo-dõi)
 4. [Loại TPL — SalaryComponentTypes](#4-loại-tpl--salarycomponenttypes)
 5. [TPL Hệ thống — SalaryCompositionSystems](#5-tpl-hệ-thống--salarycompositionsystems)
 6. [TPL Đơn vị — SalaryCompositions](#6-tpl-đơn-vị--salarycompositions)
+   - [6.19 Phân loại TPL trước khi xóa / ngừng theo dõi hàng loạt](#619-phân-loại-tpl-trước-khi-xóa--ngừng-theo-dõi-hàng-loạt)
 7. [Tùy chỉnh cột — GridConfigs](#7-tùy-chỉnh-cột--gridconfigs)
 8. [FilterCondition — operators reference](#8-lọc-nâng-cao--advancedfilter)
 9. [Mã lỗi HTTP](#9-mã-lỗi-http)
@@ -127,6 +129,16 @@ sort=Code                →  ORDER BY Code ASC
 | `1` | AutoSum | Tự động cộng tổng |
 | `2` | Formula | Theo công thức tự đặt |
 
+### SalaryAutoSumScope — Phạm vi cộng tổng tự động
+
+> Chỉ có ý nghĩa khi `valueMode = 1` (AutoSum).
+
+| Giá trị | Tên | Mô tả |
+|---|---|---|
+| `1` | SameWorkUnit | Trong cùng đơn vị công tác |
+| `2` | Subordinates | Dưới quyền |
+| `3` | OrgStructure | Thuộc cơ cấu tổ chức |
+
 ### SalaryCompositionSource — Nguồn gốc
 
 | Giá trị | Tên | Mô tả |
@@ -191,8 +203,8 @@ sort=Code                →  ORDER BY Code ASC
   "salaryCompositionID": "uuid",
   "code": "LUONG_CO_BAN",
   "name": "Lương cơ bản",
-  "organizationID": "uuid | null",
-  "organizationName": "Công ty TNHH ABC",
+  "organizationIDs": ["uuid-org-1", "uuid-org-2"],
+  "organizationNames": "Công ty TNHH ABC, Chi nhánh Hà Nội",
   "componentTypeID": "uuid",
   "componentTypeName": "Lương",
   "systemCompositionID": "uuid | null",
@@ -203,6 +215,8 @@ sort=Code                →  ORDER BY Code ASC
   "valueMode": 1,
   "valueFormula": null,
   "valueScope": null,
+  "valueScopeLevel": null,
+  "sumSourceCompositionID": null,
   "normFormula": null,
   "allowExceedNorm": false,
   "description": "Lương theo hợp đồng lao động",
@@ -210,12 +224,20 @@ sort=Code                →  ORDER BY Code ASC
   "hideWhenZero": false,
   "source": 2,
   "status": 1,
+  "isSkipUnfollowedComposition": false,
   "createdBy": null,
   "createDate": "2026-05-27T10:00:00",
   "modifiedBy": null,
   "modifiedDate": null
 }
 ```
+
+> **`organizationIDs`** — mảng UUID các đơn vị áp dụng. Backend tự normalize: nếu tất cả con của một đơn vị cha đều có mặt thì gộp lại thành cha.  
+> **`organizationNames`** — chuỗi tên đơn vị cách nhau bằng `", "` — read-only, do backend tổng hợp qua `GROUP_CONCAT`.  
+> **`valueScope`** — enum `SalaryAutoSumScope` (1/2/3), chỉ có ý nghĩa khi `valueMode = 1`.  
+> **`valueScopeLevel`** — số cấp bậc áp dụng (ví dụ: 2 = 2 cấp dưới), dùng kèm `valueScope`.  
+> **`sumSourceCompositionID`** — UUID của TPL nguồn khi AutoSum từ TPL cụ thể khác.  
+> **`isSkipUnfollowedComposition`** — **không lưu DB**, chỉ dùng khi tạo / cập nhật. Mặc định `false`. Xem mục 3.6.
 
 ### 3.4 Quy tắc validation khi tạo / cập nhật TPL
 
@@ -225,6 +247,7 @@ sort=Code                →  ORDER BY Code ASC
 | `name` | ✅ | Tối đa 255 ký tự |
 | `componentTypeID` | ✅ | Phải tồn tại trong hệ thống |
 | `nature` | ✅ | Giá trị hợp lệ: 1–4 |
+| `organizationIDs` | ✅ | Không được rỗng; backend normalize: nếu tất cả con của cha đều có → thay bằng cha |
 | `taxType` | ❌ | Chỉ truyền khi `nature = 1`; để `null` với tính chất khác |
 | `taxDeductible` | ❌ | Mặc định `false` — giá trị khoản được khấu trừ khi tính thuế TNCN |
 | `valueFormula` | ❌ | Xem quy tắc công thức bên dưới |
@@ -243,7 +266,7 @@ Công thức hỗ trợ các hàm sau (phân biệt hoa thường):
 | `INT` | `INT(số)` | Làm tròn xuống số nguyên gần nhất |
 | `TODAY` | `TODAY()` | Ngày hiện tại — không có tham số |
 
-**Tham số** hợp lệ: số (ví dụ `1000000`, `0.5`, `-5.2`) hoặc **mã TPL đang theo dõi** (ví dụ `LUONG_CO_BAN`).
+**Tham số** hợp lệ: số (ví dụ `1000000`, `0.5`, `-5.2`) hoặc **mã TPL** (ví dụ `LUONG_CO_BAN`).
 
 **Toán tử số học:** `+`, `-`, `*`, `/` và nhóm bằng `( )`.
 
@@ -257,6 +280,63 @@ IF(KPI_PERCENT >= 100, THUONG_KPI, 0)
 IF(AND(DOANH_SO > 1000000000, SO_KHACH_HANG > 50), 0.5, 0)
 SUM(LUONG_CO_BAN, PHU_CAP) * 0.105 + INT(BHXH_NLD / 30)
 ```
+
+**Validation công thức — phân biệt lỗi cứng và cảnh báo:**
+
+| Trường hợp | Loại | Hành vi |
+|---|---|---|
+| Lỗi cú pháp (hàm không hợp lệ, thiếu ngoặc...) | **Lỗi cứng** | Trả 400 — không lưu |
+| Mã TPL không tồn tại trong hệ thống | **Lỗi cứng** | Trả 400 — không lưu |
+| Mã TPL tồn tại nhưng đang **ngừng theo dõi** | **Cảnh báo** | Trả 202 — yêu cầu xác nhận (xem mục 3.6) |
+
+---
+
+### 3.6 Luồng xác nhận khi công thức có TPL ngừng theo dõi
+
+Khi POST / PUT với công thức chứa mã TPL ngừng theo dõi (status = 0), backend **không lưu ngay** mà trả về HTTP **202** để FE hiển thị dialog xác nhận.
+
+**Bước 1 — Gửi lần đầu** (`isSkipUnfollowedComposition: false`, mặc định):
+
+```json
+// POST /api/SalaryCompositions
+{
+  "code": "BHXH_NLD",
+  "valueFormula": "LUONG_CO_BAN * 0.08 + PHU_CAP_NGUNG",
+  "isSkipUnfollowedComposition": false,
+  ...
+}
+```
+
+**Response HTTP 202** — cảnh báo, chưa lưu:
+```json
+{
+  "isSuccess": false,
+  "code": 202,
+  "data": {
+    "requiresConfirmation": true,
+    "inactiveCodes": [
+      { "code": "PHU_CAP_NGUNG", "name": "Phụ cấp đã ngừng" }
+    ]
+  },
+  "userMessage": "Công thức có 1 thành phần lương đang ngừng theo dõi: PHU_CAP_NGUNG. Bạn có chắc chắn muốn lưu không?"
+}
+```
+
+**Bước 2 — Người dùng xác nhận**, FE gửi lại cùng payload với `isSkipUnfollowedComposition: true`:
+
+```json
+// POST /api/SalaryCompositions
+{
+  "code": "BHXH_NLD",
+  "valueFormula": "LUONG_CO_BAN * 0.08 + PHU_CAP_NGUNG",
+  "isSkipUnfollowedComposition": true,
+  ...
+}
+```
+
+**Response HTTP 201** — lưu thành công.
+
+> ⚠️ `isSkipUnfollowedComposition` **không được lưu vào DB** — backend dùng nó để điều khiển logic validation rồi bỏ qua. SP tự động bỏ qua param thừa.
 
 ---
 
@@ -601,20 +681,27 @@ POST /api/SalaryCompositions
   "nature": 1,
   "taxType": 2,
   "valueType": 1,
-  "valueMode": 1,
-  "valueFormula": null,
+  "valueMode": 2,
+  "valueFormula": "LUONG_CO_BAN * 0.1",
+  "valueScope": null,
+  "valueScopeLevel": null,
+  "sumSourceCompositionID": null,
   "normFormula": null,
   "allowExceedNorm": false,
   "description": "Phụ cấp ăn trưa hàng tháng",
   "showOnPayslip": true,
   "hideWhenZero": false,
-  "organizationID": null
+  "organizationIDs": ["uuid-org-1", "uuid-org-2"],
+  "isSkipUnfollowedComposition": false
 }
 ```
 
-> FE không cần truyền: `salaryCompositionID` (auto-generate), `componentTypeName` (read-only), `source` (mặc định `Custom`), `status` (mặc định `Active`), `systemCompositionID`, `state`, `isDeleted`, `createDate`, `modifiedDate`.
+> **`organizationIDs` là bắt buộc** — phải truyền ít nhất 1 đơn vị. Backend tự normalize (gộp lên cha nếu đủ con).  
+> FE không cần truyền: `salaryCompositionID` (auto-generate), `componentTypeName` / `organizationNames` (read-only), `source` (mặc định `Custom`), `status` (mặc định `Active`), `systemCompositionID`, `state`, `isDeleted`, `createDate`, `modifiedDate`.  
+> **`isSkipUnfollowedComposition`** — mặc định `false`. Xem mục 3.6 để hiểu luồng xác nhận.
 
-**Response 201:** `data` là số bản ghi được thêm (`1`).  
+**Response 201:** Lưu thành công — `data` là `1`.  
+**Response 202:** Công thức chứa TPL ngừng theo dõi — `data` là `{ requiresConfirmation, inactiveCodes[] }`. Gửi lại với `isSkipUnfollowedComposition: true` để lưu.  
 **Response 400:** Validation lỗi — `data` là mảng `[{ field, message }]`.  
 **Response 409:** Mã đã tồn tại.
 
@@ -626,12 +713,24 @@ POST /api/SalaryCompositions
 PUT /api/SalaryCompositions/{id}
 ```
 
-**Request body:** Tương tự tạo mới.
+**Request body:** Tương tự tạo mới (bao gồm `isSkipUnfollowedComposition`).
 
 > ⚠️ `code` **không được thay đổi** sau khi lưu — backend sẽ trả lỗi 400 nếu gửi code khác.
 
-**Response 200:** `data` là số bản ghi bị ảnh hưởng.  
-**Response 400:** Validation lỗi hoặc cố đổi `code`.  
+**Giới hạn khi `source = 2` (InheritedFromSystem):**  
+TPL kế thừa từ hệ thống chỉ được sửa 5 field sau. Mọi field khác bị lock — backend trả 400 nếu gửi giá trị khác với DB.
+
+| Field được phép sửa | Ghi chú |
+|---|---|
+| `name` | Tên hiển thị |
+| `organizationIDs` | Đơn vị áp dụng |
+| `description` | Mô tả |
+| `showOnPayslip` | Hiển thị trên phiếu lương |
+| `status` | Trạng thái theo dõi (`0` / `1`) |
+
+**Response 200:** Cập nhật thành công — `data` là số bản ghi bị ảnh hưởng.  
+**Response 202:** Công thức chứa TPL ngừng theo dõi — yêu cầu xác nhận, xem mục 3.6.  
+**Response 400:** Validation lỗi; cố đổi `code`; hoặc cố sửa field bị lock trên TPL hệ thống — `userMessage` liệt kê tên các field vi phạm.  
 **Response 404:** Không tìm thấy.
 
 ---
@@ -642,10 +741,14 @@ PUT /api/SalaryCompositions/{id}
 DELETE /api/SalaryCompositions/{id}
 ```
 
-> ⚠️ TPL kế thừa từ hệ thống (`source = 2`) không được phép xóa.
+> ⚠️ **Hai điều kiện chặn xóa:**
+> - **BR-08:** TPL kế thừa từ hệ thống (`source = 2`) không được phép xóa.
+> - **BR-11:** TPL đang được tham chiếu trong công thức (`ValueFormula` / `NormFormula` / `TaxableFormula` / `ExemptFormula`) của TPL khác không được phép xóa.
+>
+> FE nên gọi `POST /exit-data` trước để phân loại danh sách trước khi cho phép xóa (xem mục 6.19).
 
 **Response 200:** Xóa thành công.  
-**Response 400:** Không thể xóa (TPL hệ thống).  
+**Response 400:** Không thể xóa — TPL hệ thống hoặc đang được tham chiếu trong công thức. `userMessage` nêu rõ lý do.  
 **Response 404:** Không tìm thấy.
 
 ---
@@ -661,7 +764,7 @@ POST /api/SalaryCompositions/bulk-delete
 ["uuid-1", "uuid-2", "uuid-3"]
 ```
 
-Nếu **bất kỳ** ID nào thất bại → rollback toàn bộ, không xóa gì cả.
+Nếu **bất kỳ** ID nào thất bại (TPL hệ thống hoặc đang được tham chiếu trong công thức) → rollback toàn bộ, không xóa gì cả.
 
 **Response 200:** Xóa thành công tất cả.  
 **Response 400 / 404:** Một ID thất bại → toàn bộ bị rollback.
@@ -682,9 +785,10 @@ POST /api/SalaryCompositions/bulk-delete/partial
   "isSuccess": true,
   "code": 200,
   "data": {
-    "succeeded": ["uuid-1", "uuid-3"],
+    "succeeded": ["uuid-1"],
     "failed": [
-      { "id": "uuid-2", "reason": "Không thể xóa thành phần lương mặc định của hệ thống" }
+      { "id": "uuid-2", "reason": "Không thể xóa thành phần lương mặc định của hệ thống" },
+      { "id": "uuid-3", "reason": "Không thể xóa thành phần lương 'Lương cơ bản' vì đang được sử dụng trong công thức của thành phần lương khác" }
     ]
   }
 }
@@ -756,7 +860,15 @@ PATCH /api/SalaryCompositions/bulk-deactivate
 POST /api/SalaryCompositions/inherit/{systemCompositionId}
 ```
 
-Không có request body — backend tự lấy thông tin từ `systemCompositionId` và tạo TPL đơn vị với `source = InheritedFromSystem`.
+Backend lấy thông tin từ `systemCompositionId`, tạo TPL đơn vị với `source = InheritedFromSystem` và gắn với các đơn vị trong body.
+
+**Request body (tùy chọn):**
+```json
+["uuid-org-1", "uuid-org-2"]
+```
+
+> Có thể bỏ trống body hoặc truyền `null` / `[]` — backend tự fill toàn công ty (tất cả đơn vị gốc không có cha).  
+> Truyền danh sách UUID cụ thể nếu muốn áp dụng cho một số đơn vị nhất định.
 
 **Response 201:** Tạo thành công.  
 **Response 400:** Validation lỗi (ví dụ: `ComponentTypeID` null trong TPL hệ thống).  
@@ -773,8 +885,16 @@ POST /api/SalaryCompositions/inherit/batch
 
 **Request body:**
 ```json
-["uuid-system-1", "uuid-system-2", "uuid-system-3"]
+{
+  "systemCompositionIds": ["uuid-system-1", "uuid-system-2", "uuid-system-3"],
+  "organizationIDs": ["uuid-org-1", "uuid-org-2"]
+}
 ```
+
+| Field | Type | Mô tả |
+|---|---|---|
+| `systemCompositionIds` | `uuid[]` | Danh sách ID TPL hệ thống cần kế thừa — bắt buộc |
+| `organizationIDs` | `uuid[]` | Danh sách đơn vị áp dụng — bắt buộc, dùng chung cho tất cả TPL trong batch |
 
 Tiếp tục kể cả khi một số ID thất bại (partial result).
 
@@ -886,7 +1006,68 @@ POST /api/SalaryCompositions/AdvancedFilterProc
 | `filters` | `FilterCondition[]?` | **Phần 4** — Lọc nâng cao theo trường, xem mục 8 |
 | `filterLogic` | `int` | `0` = AND (mặc định), `1` = OR — áp dụng cho `filters` |
 
-**Response 200:** Cấu trúc phân trang, `data` là mảng `SalaryComposition` kèm `componentTypeName` và `organizationName`.
+**Response 200:** Cấu trúc phân trang, `data` là mảng `SalaryComposition` kèm `componentTypeName`, `organizationIDs` (mảng UUID) và `organizationNames` (chuỗi tên ghép).
+
+---
+
+### 6.19 Phân loại TPL trước khi xóa / ngừng theo dõi hàng loạt
+
+```
+POST /api/SalaryCompositions/exit-data
+```
+
+Nhận vào danh sách ID, phân loại mỗi TPL vào **một trong ba nhóm** để FE hiển thị cảnh báo phù hợp trước khi xóa hoặc ngừng theo dõi hàng loạt. Dữ liệu lấy từ cache — không tốn thêm DB round-trip.
+
+**Ưu tiên phân loại:** `DataExist` > `DataSystem` > `DataNotExist`
+
+| Nhóm | Điều kiện | Gợi ý hành động FE |
+|---|---|---|
+| `DataExist` | Code đang được tham chiếu trong công thức của TPL khác | Cảnh báo mạnh — không thể xóa, nếu ngừng theo dõi sẽ ảnh hưởng công thức |
+| `DataSystem` | `source = 2` (InheritedFromSystem) và không đang dùng trong công thức | Cảnh báo nhẹ — không thể xóa, có thể ngừng theo dõi |
+| `DataNotExist` | Không thuộc 2 nhóm trên | An toàn — có thể xóa hoặc ngừng theo dõi |
+
+**Request body:**
+```json
+{
+  "ids": ["uuid-1", "uuid-2", "uuid-3", "uuid-4"],
+  "pageIndex": 1,
+  "pageSize": 10
+}
+```
+
+| Field | Type | Mặc định | Mô tả |
+|---|---|---|---|
+| `ids` | `uuid[]` | — | Danh sách ID cần phân loại — bắt buộc, không được rỗng |
+| `pageIndex` | `int` | `1` | Trang hiện tại — phân trang trên danh sách `ids` đầu vào |
+| `pageSize` | `int` | `10` | Số phần tử mỗi trang |
+
+> Phân trang áp dụng trên danh sách `ids` đầu vào (không phải toàn bộ TPL trong DB).  
+> ID không tồn tại hoặc đã bị xóa mềm sẽ bị bỏ qua.
+
+**Response 200:**
+```json
+{
+  "isSuccess": true,
+  "code": 200,
+  "data": {
+    "dataExist": [
+      { "salaryCompositionID": "uuid-1", "code": "LUONG_CO_BAN", "name": "Lương cơ bản", "source": 2, "status": 1, ... }
+    ],
+    "dataSystem": [
+      { "salaryCompositionID": "uuid-2", "code": "BHXH_CTY", "name": "BHXH Công ty", "source": 2, "status": 1, ... }
+    ],
+    "dataNotExist": [
+      { "salaryCompositionID": "uuid-3", "code": "THUONG_KPI", "name": "Thưởng KPI", "source": 1, "status": 0, ... }
+    ],
+    "total": 4,
+    "pageSize": 10,
+    "currentPage": 1,
+    "pageCount": 1
+  }
+}
+```
+
+**Response 400:** `ids` rỗng.
 
 ---
 
@@ -1115,11 +1296,19 @@ Xem chi tiết tại mục [5.5](#55-lọc-nâng-cao--advancedfilter).
 |---|---|---|
 | `200` | OK | Thành công (GET, PUT, PATCH, DELETE) |
 | `201` | Created | Tạo mới thành công (POST) |
-| `400` | Bad Request | Validation lỗi; cố sửa `Code`; xóa TPL hệ thống |
+| `202` | Confirmation Required | Công thức chứa TPL ngừng theo dõi — **không phải lỗi**, cần người dùng xác nhận. `isSuccess: false`, `data.requiresConfirmation: true` |
+| `400` | Bad Request | Validation lỗi; cố sửa `Code`; xóa TPL hệ thống hoặc TPL đang được tham chiếu trong công thức; cố sửa field bị lock trên TPL hệ thống |
 | `404` | Not Found | Không tìm thấy bản ghi theo ID |
 | `405` | Method Not Allowed | Gọi POST/PUT/DELETE/PATCH trên SalaryCompositionSystems |
 | `409` | Conflict | Mã (`Code`) đã tồn tại trong hệ thống |
 | `500` | Server Error | Lỗi server — kiểm tra `devMessage` |
+
+### Phân biệt 202 với 400
+
+```
+isSuccess: false + code: 400  →  Lỗi thật, phải sửa trước khi lưu
+isSuccess: false + code: 202  →  Cảnh báo, người dùng có thể bỏ qua và lưu
+```
 
 ---
 
@@ -1164,8 +1353,8 @@ Xem chi tiết tại mục [5.5](#55-lọc-nâng-cao--advancedfilter).
 | `SalaryCompositionID` | `uuid` | Khóa chính |
 | `Code` | `string` | Mã duy nhất — không sửa được sau khi lưu |
 | `Name` | `string` | |
-| `OrganizationID` | `uuid?` | |
-| `OrganizationName` | `string?` | Read-only — không dùng làm filter field |
+| `OrganizationIDs` | `uuid[]` | Danh sách đơn vị áp dụng — bắt buộc khi tạo/sửa |
+| `OrganizationNames` | `string?` | Read-only — tên các đơn vị ghép bằng `", "`, không dùng làm filter field |
 | `ComponentTypeID` | `uuid` | |
 | `ComponentTypeName` | `string?` | Read-only — không dùng làm filter field |
 | `SystemCompositionID` | `uuid?` | |
@@ -1175,6 +1364,9 @@ Xem chi tiết tại mục [5.5](#55-lọc-nâng-cao--advancedfilter).
 | `ValueType` | `int` | Enum SalaryValueType |
 | `ValueMode` | `int` | Enum SalaryValueMode |
 | `ValueFormula` | `string?` | |
+| `ValueScope` | `int?` | Enum SalaryAutoSumScope — chỉ dùng khi `ValueMode = 1` |
+| `ValueScopeLevel` | `byte?` | Số cấp bậc áp dụng khi AutoSum |
+| `SumSourceCompositionID` | `uuid?` | UUID TPL nguồn khi AutoSum từ TPL cụ thể |
 | `NormFormula` | `string?` | |
 | `AllowExceedNorm` | `bool` | |
 | `Description` | `string?` | |
@@ -1182,5 +1374,6 @@ Xem chi tiết tại mục [5.5](#55-lọc-nâng-cao--advancedfilter).
 | `HideWhenZero` | `bool` | |
 | `Source` | `int` | Enum SalaryCompositionSource |
 | `Status` | `int` | Enum SalaryCompositionStatus |
+| `IsSkipUnfollowedComposition` | `bool` | **Không lưu DB** — `true` khi người dùng xác nhận lưu dù có TPL ngừng theo dõi. Mặc định `false`. Không dùng làm filter field |
 | `CreateDate` | `datetime` | |
 | `ModifiedDate` | `datetime?` | |

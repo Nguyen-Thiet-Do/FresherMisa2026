@@ -8,7 +8,7 @@ namespace FresherMisa2026.Entities.Organization
     /// Đơn vị công tác / cơ cấu tổ chức
     /// Created By: Nguyen Thiet Do (2026-05-26)
     /// </summary>
-    [ConfigTable("pa_organization", true, "Code")]
+    [ConfigTable("pa_organization", true, "Code", useSnakeCase: true)]
     public class Organization : BaseModel
     {
         #region Declare

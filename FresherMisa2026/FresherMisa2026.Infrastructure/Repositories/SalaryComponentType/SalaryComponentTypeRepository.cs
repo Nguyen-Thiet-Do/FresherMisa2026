@@ -1,10 +1,8 @@
 using FresherMisa2026.Application.Interfaces.Repositories;
 using FresherMisa2026.Entities.SalaryComponentType;
-using FresherMisa2026.Entities.Settings;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace FresherMisa2026.Infrastructure.Repositories
 {
@@ -19,9 +17,8 @@ namespace FresherMisa2026.Infrastructure.Repositories
         public SalaryComponentTypeRepository(
             IConfiguration configuration,
             IMemoryCache cache,
-            ILogger<BaseRepository<SalaryComponentType>> logger,
-            IOptions<CacheSettings> cacheSettings)
-            : base(configuration, cache, logger, cacheSettings)
+            ILogger<BaseRepository<SalaryComponentType>> logger)
+            : base(configuration, cache, logger)
         {
             _connectionString = configuration.GetConnectionString("SalaryConnection")!;
         }

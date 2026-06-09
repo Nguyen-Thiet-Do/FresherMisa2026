@@ -45,11 +45,6 @@ namespace FresherMisa2026.Application.Interfaces.Services
         Task<ServiceResponse> SetStatusBulkAsync(List<Guid> ids, SalaryCompositionStatus status);
 
 
-        /// <summary>
-        /// Lọc nâng cao 4 phần: search (mã/tên), trạng thái, đơn vị, field conditions
-        /// </summary>
-        Task<ServiceResponse> AdvancedFilterAsync(SalaryCompositionAdvancedFilterRequest request);
-
         /// <summary>Lọc nâng cao 4 phần qua stored procedure</summary>
         Task<ServiceResponse> AdvancedFilterWithProcAsync(SalaryCompositionAdvancedFilterRequest request);
 

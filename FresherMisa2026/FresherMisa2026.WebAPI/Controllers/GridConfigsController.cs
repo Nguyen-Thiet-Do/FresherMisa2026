@@ -2,9 +2,7 @@ using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.GridConfig;
 using FresherMisa2026.Entities.GridConfig.DTO;
-using FresherMisa2026.Entities.Settings;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace FresherMisa2026.WebAPI.Controllers
 {
@@ -23,10 +21,8 @@ namespace FresherMisa2026.WebAPI.Controllers
 
         #region Constructer
 
-        public GridConfigsController(
-            IGridConfigService gridConfigService,
-            IOptions<PagingSettings> pagingSettings)
-            : base(gridConfigService, pagingSettings)
+        public GridConfigsController(IGridConfigService gridConfigService)
+            : base(gridConfigService)
         {
             _gridConfigService = gridConfigService;
         }

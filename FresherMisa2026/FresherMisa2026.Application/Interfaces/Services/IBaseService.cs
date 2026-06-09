@@ -1,5 +1,4 @@
 using FresherMisa2026.Entities;
-using FresherMisa2026.Entities.AdvancedFilter;
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -8,16 +7,6 @@ namespace FresherMisa2026.Application.Interfaces.Services
 {
     public interface IBaseService<TEntity>
     {
-        /// <summary>
-        /// Approach 1: Advanced filter dùng Dynamic SQL trong C#
-        /// </summary>
-        Task<ServiceResponse> AdvancedFilterPagingAsync(AdvancedFilterRequest request);
-
-        /// <summary>
-        /// Approach 2: Advanced filter dùng Stored Procedure
-        /// </summary>
-        Task<ServiceResponse> AdvancedFilterPagingWithProcAsync(AdvancedFilterRequest request);
-
         /// <summary>
         /// Lấy tất cả bản ghi
         /// </summary>
@@ -63,7 +52,7 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// <param name="entity">Thực thể cần thêm</param>
         /// <returns>ServiceResponse</returns>
         /// CREATED BY: DVHAI (11/07/2026)
-        Task<ServiceResponse> InsertAsync(TEntity entity);
+        Task<ServiceResponse> InsertAsync(TEntity entity);  
 
         /// <summary>
         /// Cập nhập thông tin bản ghi 
@@ -91,5 +80,8 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// <returns>ServiceResponse</returns>
         /// CREATED BY: NTDo (24/05/2026)
         Task<ServiceResponse> PatchFieldAsync(Guid entityId, string fieldName, JsonElement value);
+
+        /// <summary>Cập nhật nhiều trường cùng lúc — validate từng trường trước khi ghi.</summary>
+        Task<ServiceResponse> PatchFieldsAsync(Guid entityId, Dictionary<string, JsonElement> fields);
     }
 }

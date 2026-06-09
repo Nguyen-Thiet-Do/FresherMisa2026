@@ -1,13 +1,25 @@
 namespace FresherMisa2026.Application.Services;
 
 /// <summary>
-/// Kết quả validate công thức: lỗi cứng (cú pháp, mã không tồn tại) và cảnh báo mềm (mã ngừng theo dõi).
+/// Vị trí của một mã TPL không tồn tại trong công thức gốc (đã bao gồm prefix '=' nếu có)
+/// để FE highlight chính xác range trong input.
 /// </summary>
-public record FormulaValidationResult(bool IsValid, string? Error, IReadOnlyList<string> InactiveCodes)
+public record MissingCodeInfo(string Code, int Position, int Length);
+
+/// <summary>
+/// Kết quả validate công thức:
+/// - lỗi cú pháp → IsValid=false, Error có nội dung
+/// - mã không tồn tại → IsValid=false, MissingCodes liệt kê toàn bộ vị trí (gom đủ, không fail-fast)
+/// - mã ngừng theo dõi → IsValid=true (cảnh báo mềm), InactiveCodes có nội dung
+/// </summary>
+public record FormulaValidationResult(
+    bool IsValid,
+    string? Error,
+    IReadOnlyList<string> InactiveCodes,
+    IReadOnlyList<MissingCodeInfo> MissingCodes)
 {
-    public static FormulaValidationResult Ok(IReadOnlyList<string> inactiveCodes) => new(true, null, inactiveCodes);
-    public static FormulaValidationResult Fail(string error) => new(false, error, Array.Empty<string>());
-    public static readonly FormulaValidationResult Empty = new(true, null, Array.Empty<string>());
+    public static readonly FormulaValidationResult Empty =
+        new(true, null, Array.Empty<string>(), Array.Empty<MissingCodeInfo>());
 }
 
 /// <summary>
@@ -18,36 +30,63 @@ public record FormulaValidationResult(bool IsValid, string? Error, IReadOnlyList
 /// </summary>
 public static class FormulaValidator
 {
-    private static readonly HashSet<string> _allowedFunctions = new(StringComparer.Ordinal)
-        { "SUM", "IF", "AND", "OR", "INT", "TODAY" };
+    /// <summary>
+    /// Danh sách hàm dựng sẵn được phép dùng trong công thức.
+    /// Code TPL bị cấm trùng tên hàm để tránh ambiguity giữa "call hàm" và "tham chiếu mã" khi parse/match.
+    /// </summary>
+    public static readonly IReadOnlySet<string> AllowedFunctions =
+        new HashSet<string>(StringComparer.Ordinal) { "SUM", "IF", "AND", "OR", "INT", "TODAY" };
+
+    private static readonly HashSet<string> _allowedFunctions = (HashSet<string>)AllowedFunctions;
 
     /// <summary>
     /// Validate cú pháp công thức và tham chiếu mã TPL.
     /// Mã tồn tại nhưng ngừng theo dõi → ghi vào InactiveCodes (cảnh báo mềm), không lỗi.
-    /// Mã không tồn tại / lỗi cú pháp → IsValid = false.
+    /// Mã không tồn tại → ghi vào MissingCodes (gom đủ, không fail-fast) + IsValid=false.
+    /// Lỗi cú pháp → IsValid=false, Error có nội dung; MissingCodes đã thu thập tới điểm fail vẫn được giữ lại.
     /// Trả về Empty nếu formula rỗng.
+    /// Position trong MissingCodes là vị trí tuyệt đối trong chuỗi formula gốc (gồm cả '=').
     /// </summary>
     /// Created By: Nguyen Thiet Do (2026-05-27)
     public static FormulaValidationResult Validate(string? formula, HashSet<string> activeCodes, HashSet<string>? allCodes = null)
     {
         if (string.IsNullOrWhiteSpace(formula)) return FormulaValidationResult.Empty;
 
+        int offset = 0;
+        var parseInput = formula;
+        if (formula.StartsWith('='))
+        {
+            parseInput = formula[1..].TrimStart();
+            offset = formula.Length - parseInput.Length;
+        }
+
+        List<Token> tokens;
         try
         {
-            var tokens = Tokenize(formula);
-            var parser = new FormulaParser(tokens, activeCodes, allCodes);
-            parser.ParseValueExpr();
-
-            if (parser.Current.Kind != TokenKind.Eof)
-                throw new FormulaException(
-                    $"Ký tự không mong đợi '{parser.Current.Value}' tại vị trí {parser.Current.Pos + 1}");
-
-            return FormulaValidationResult.Ok(parser.InactiveCodes);
+            tokens = Tokenize(parseInput);
         }
         catch (FormulaException ex)
         {
-            return FormulaValidationResult.Fail(ex.Message);
+            return new FormulaValidationResult(false, ex.Message,
+                Array.Empty<string>(), Array.Empty<MissingCodeInfo>());
         }
+
+        var parser = new FormulaParser(tokens, activeCodes, allCodes, offset);
+        string? error = null;
+        try
+        {
+            parser.ParseValueExpr();
+            if (parser.Current.Kind != TokenKind.Eof)
+                throw new FormulaException(
+                    $"Ký tự không mong đợi '{parser.Current.Value}' tại vị trí {parser.Current.Pos + 1}");
+        }
+        catch (FormulaException ex)
+        {
+            error = ex.Message;
+        }
+
+        bool isValid = error == null && parser.MissingCodes.Count == 0;
+        return new FormulaValidationResult(isValid, error, parser.InactiveCodes, parser.MissingCodes);
     }
 
     // ─── Tokens ────────────────────────────────────────────────────────────────
@@ -147,17 +186,21 @@ public static class FormulaValidator
         private readonly List<Token> _tokens;
         private readonly HashSet<string> _activeCodes;
         private readonly HashSet<string>? _allCodes;
+        private readonly int _offset;
         private readonly List<string> _inactiveCodes = new();
+        private readonly List<MissingCodeInfo> _missingCodes = new();
         private int _pos;
 
         public Token Current => _tokens[_pos];
         public IReadOnlyList<string> InactiveCodes => _inactiveCodes;
+        public IReadOnlyList<MissingCodeInfo> MissingCodes => _missingCodes;
 
-        public FormulaParser(List<Token> tokens, HashSet<string> activeCodes, HashSet<string>? allCodes)
+        public FormulaParser(List<Token> tokens, HashSet<string> activeCodes, HashSet<string>? allCodes, int offset)
         {
             _tokens = tokens;
             _activeCodes = activeCodes;
             _allCodes = allCodes;
+            _offset = offset;
         }
 
         private Token Consume() => _tokens[_pos++];
@@ -226,22 +269,23 @@ public static class FormulaValidator
 
             if (Current.Kind == TokenKind.Ident)
             {
-                string name = Current.Value;
+                var token = Current;
                 Consume();
 
                 if (Current.Kind == TokenKind.LParen)
                 {
-                    ParseFunctionAsValue(name);
+                    ParseFunctionAsValue(token.Value);
                     return;
                 }
 
                 // TPL code reference — phân biệt hoa thường
-                if (!_activeCodes.Contains(name))
+                if (!_activeCodes.Contains(token.Value))
                 {
-                    if (_allCodes != null && _allCodes.Contains(name))
-                        _inactiveCodes.Add(name); // cảnh báo mềm — tiếp tục parse
+                    if (_allCodes != null && _allCodes.Contains(token.Value))
+                        _inactiveCodes.Add(token.Value); // cảnh báo mềm — tiếp tục parse
                     else
-                        throw new FormulaException($"Mã thành phần lương '{name}' không tồn tại");
+                        // Gom mã không tồn tại + vị trí (tuyệt đối trong formula gốc) cho FE highlight, không fail-fast
+                        _missingCodes.Add(new MissingCodeInfo(token.Value, token.Pos + _offset, token.Value.Length));
                 }
                 return;
             }

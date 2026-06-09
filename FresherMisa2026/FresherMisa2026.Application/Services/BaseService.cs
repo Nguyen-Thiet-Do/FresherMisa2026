@@ -8,6 +8,8 @@ using FresherMisa2026.Entities.Extensions;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace FresherMisa2026.Application.Services
 {
@@ -23,6 +25,8 @@ namespace FresherMisa2026.Application.Services
         private readonly string _tableName;
         private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _cachedProperties = new();
         private const string SearchFieldSeparator = ";";
+
+        private static readonly Regex _fieldNamePattern = new(@"^[A-Za-z0-9_]+$", RegexOptions.Compiled);
 
         // Các trường hệ thống từ BaseModel — không cho phép PATCH
         private static readonly HashSet<string> _securityFields = new(StringComparer.OrdinalIgnoreCase)
@@ -72,6 +76,68 @@ namespace FresherMisa2026.Application.Services
         private static PropertyInfo[] GetCachedProperties(Type entityType)
         {
             return _cachedProperties.GetOrAdd(entityType, type => type.GetProperties());
+        }
+
+        /// <summary>
+        /// Project danh sách entity sang danh sách dictionary chỉ chứa các property được yêu cầu.
+        /// Tên property so sánh case-insensitive; property không tồn tại trên entity thì bị bỏ qua.
+        /// </summary>
+        protected static IEnumerable<IDictionary<string, object?>> ProjectColumns(
+            IEnumerable<TEntity> data, IList<string> columns)
+        {
+            var props = GetCachedProperties(typeof(TEntity))
+                .Where(p => columns.Any(c => string.Equals(c, p.Name, StringComparison.OrdinalIgnoreCase)))
+                .ToArray();
+
+            return data.Select(entity =>
+            {
+                IDictionary<string, object?> dict = new Dictionary<string, object?>(props.Length);
+                foreach (var prop in props)
+                    dict[prop.Name] = prop.GetValue(entity);
+                return dict;
+            });
+        }
+
+        /// <summary>Build PagingResponse chứa dữ liệu đã được project sang dictionary (khi Columns được chỉ định).</summary>
+        protected static PagingResponse<IDictionary<string, object?>> BuildProjectedPaging(
+            long total, int pageIndex, int pageSize,
+            IEnumerable<IDictionary<string, object?>> data)
+            => new()
+            {
+                Total       = total,
+                PageSize    = pageSize,
+                CurrentPage = pageIndex,
+                PageCount   = (long)Math.Ceiling((double)total / pageSize),
+                Data        = data.ToList()
+            };
+
+        /// <summary>
+        /// Validate tên trường trong SearchFields và Filters — chỉ cho phép [A-Za-z0-9_].
+        /// Trả về danh sách lỗi, rỗng nếu hợp lệ.
+        /// </summary>
+        protected static List<ValidationError> ValidateFilterFieldNames(
+            IEnumerable<string>? searchFields,
+            IEnumerable<FilterCondition>? filters)
+        {
+            var invalid = new HashSet<string>(StringComparer.Ordinal);
+
+            if (searchFields != null)
+                foreach (var f in searchFields)
+                    if (!_fieldNamePattern.IsMatch(f))
+                        invalid.Add(f);
+
+            if (filters != null)
+                foreach (var fc in filters)
+                    if (!string.IsNullOrWhiteSpace(fc.Field) && !_fieldNamePattern.IsMatch(fc.Field))
+                        invalid.Add(fc.Field);
+
+            if (invalid.Count == 0) return new List<ValidationError>();
+
+            return new List<ValidationError>
+            {
+                new ValidationError("Fields",
+                    $"Tên trường không hợp lệ: {string.Join(", ", invalid)}. Chỉ được chứa chữ cái (A-Z, a-z), số (0-9) và dấu gạch dưới (_)")
+            };
         }
         #endregion
 
@@ -515,6 +581,68 @@ namespace FresherMisa2026.Application.Services
                 : CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi để cập nhật");
         }
 
+        /// <summary>Cập nhật nhiều trường cùng lúc trong một câu UPDATE duy nhất.</summary>
+        public async Task<ServiceResponse> PatchFieldsAsync(Guid entityId, Dictionary<string, JsonElement> fields)
+        {
+            if (entityId == Guid.Empty)
+                return CreateErrorResponse(ResponseCode.BadRequest, "Id không hợp lệ");
+            if (fields == null || fields.Count == 0)
+                return CreateErrorResponse(ResponseCode.BadRequest, "Danh sách fields không được rỗng");
+
+            var properties = GetCachedProperties(typeof(TEntity));
+            var keyName = typeof(TEntity).GetKeyName();
+            var validated = new Dictionary<string, object?>(fields.Count);
+            var errors = new List<ValidationError>();
+
+            foreach (var (fieldName, jsonValue) in fields)
+            {
+                var prop = properties.FirstOrDefault(p => p.Name.Equals(fieldName, StringComparison.OrdinalIgnoreCase));
+                if (prop == null)
+                { errors.Add(new ValidationError(fieldName, $"Trường '{fieldName}' không tồn tại")); continue; }
+
+                if (prop.Name.Equals(keyName, StringComparison.OrdinalIgnoreCase))
+                { errors.Add(new ValidationError(fieldName, $"Không được phép cập nhật khóa chính '{prop.Name}'")); continue; }
+
+                if (_securityFields.Contains(prop.Name))
+                { errors.Add(new ValidationError(fieldName, $"Trường '{prop.Name}' là trường hệ thống, không được phép cập nhật")); continue; }
+
+                if (prop.IsDefined(typeof(NotPatchable), false))
+                {
+                    var dn = typeof(TEntity).GetColumnDisplayName(prop.Name);
+                    errors.Add(new ValidationError(fieldName, $"Trường '{dn}' không được phép cập nhật"));
+                    continue;
+                }
+
+                object? converted;
+                try { converted = ConvertJsonElementToType(jsonValue, prop.PropertyType); }
+                catch
+                {
+                    var dn = typeof(TEntity).GetColumnDisplayName(prop.Name);
+                    errors.Add(new ValidationError(fieldName, $"Giá trị không hợp lệ cho trường '{dn}'")); continue;
+                }
+
+                if (prop.IsDefined(typeof(IRequired), false)
+                    && (converted == null || string.IsNullOrEmpty(converted.ToString())))
+                {
+                    var dn = typeof(TEntity).GetColumnDisplayName(prop.Name);
+                    errors.Add(new ValidationError(prop.Name, $"Trường {dn} bắt buộc nhập")); continue;
+                }
+
+                validated[prop.Name] = converted;
+            }
+
+            if (errors.Count > 0) return CreateValidationErrorResponse(errors);
+
+            var existing = await _baseRepository.GetEntityByIDAsync(entityId);
+            if (existing == null)
+                return CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi");
+
+            var rows = await _baseRepository.PatchFieldsAsync(entityId, validated);
+            return rows > 0
+                ? CreateSuccessResponse(rows)
+                : CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi để cập nhật");
+        }
+
         private static object? ConvertJsonElementToType(JsonElement element, Type targetType)
         {
             if (element.ValueKind == JsonValueKind.Null) return null;
@@ -529,40 +657,12 @@ namespace FresherMisa2026.Application.Services
             if (underlying == typeof(decimal)) return element.GetDecimal();
             if (underlying == typeof(bool)) return element.GetBoolean();
             if (underlying == typeof(DateTime)) return element.GetDateTime();
+            if (underlying == typeof(byte)) return element.GetByte();
+            if (underlying.IsEnum) return Enum.ToObject(underlying, element.GetInt32());
 
             return element.GetString();
         }
         #endregion
-
-        /// <summary>
-        /// Approach 1: Advanced filter paging — Dynamic SQL trong C#
-        /// </summary>
-        public async Task<ServiceResponse> AdvancedFilterPagingAsync(AdvancedFilterRequest request)
-        {
-            var (total, data) = await _baseRepository.GetAdvancedFilterPagingAsync(request);
-            return CreateSuccessResponse(BuildPagingResponse(total, request.PageIndex, request.PageSize, data));
-        }
-
-        /// <summary>
-        /// Approach 2: Advanced filter paging — Stored Procedure nhận JSON
-        /// </summary>
-        public async Task<ServiceResponse> AdvancedFilterPagingWithProcAsync(AdvancedFilterRequest request)
-        {
-            var (total, data) = await _baseRepository.GetAdvancedFilterPagingWithProcAsync(request);
-            return CreateSuccessResponse(BuildPagingResponse(total, request.PageIndex, request.PageSize, data));
-        }
-
-        private static PagingResponse<TEntity> BuildPagingResponse(long total, int pageIndex, int pageSize, IEnumerable<TEntity> data)
-        {
-            return new PagingResponse<TEntity>
-            {
-                Total = total,
-                PageSize = pageSize,
-                CurrentPage = pageIndex,
-                PageCount = (long)Math.Ceiling((double)total / pageSize),
-                Data = data.ToList()
-            };
-        }
 
         #region Virtual method - Lifecycle hooks
         /// <summary>
@@ -628,5 +728,13 @@ namespace FresherMisa2026.Application.Services
     /// </summary>
     /// <param name="Field">Tên trường</param>
     /// <param name="Message">Thông báo lỗi</param>
-    public record ValidationError(string Field, string Message);
+    public record ValidationError(string Field, string Message)
+    {
+        /// <summary>
+        /// Vị trí các mã TPL không tồn tại trong công thức (FE dùng để highlight đỏ trong input).
+        /// Chỉ có ý nghĩa với lỗi công thức; null/không xuất hiện cho mọi loại lỗi khác.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public IReadOnlyList<MissingCodeInfo>? MissingCodes { get; init; }
+    }
 }

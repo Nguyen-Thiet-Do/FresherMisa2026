@@ -11,11 +11,6 @@ namespace FresherMisa2026.Application.Interfaces.Repositories
         /// Created By: Nguyen Thiet Do (2026-05-27)
         Task<(IEnumerable<SalaryComposition> Data, long Total)> FilterAsync(SalaryCompositionFilterRequest request);
 
-        /// <summary>
-        /// Lọc nâng cao 4 phần: search, status, orgs, field conditions
-        /// </summary>
-        Task<(IEnumerable<SalaryComposition> Data, long Total)> AdvancedFilterAsync(SalaryCompositionAdvancedFilterRequest request);
-
         /// <summary>Lọc nâng cao 4 phần qua stored procedure</summary>
         Task<(IEnumerable<SalaryComposition> Data, long Total)> AdvancedFilterWithProcAsync(SalaryCompositionAdvancedFilterRequest request);
     }

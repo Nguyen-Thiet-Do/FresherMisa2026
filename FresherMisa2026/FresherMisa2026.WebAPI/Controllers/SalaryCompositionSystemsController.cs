@@ -1,10 +1,7 @@
 using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities;
-using FresherMisa2026.Entities.AdvancedFilter;
-using FresherMisa2026.Entities.Settings;
 using FresherMisa2026.Entities.SalaryCompositionSystem.DTO;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 using System.Text.Json;
 using SalaryCompositionSystemEntity = FresherMisa2026.Entities.SalaryCompositionSystem.SalaryCompositionSystem;
 
@@ -25,10 +22,8 @@ namespace FresherMisa2026.WebAPI.Controllers
 
         #region Constructer
 
-        public SalaryCompositionSystemsController(
-            ISalaryCompositionSystemService salaryCompositionSystemService,
-            IOptions<PagingSettings> pagingSettings)
-            : base(salaryCompositionSystemService, pagingSettings)
+        public SalaryCompositionSystemsController(ISalaryCompositionSystemService salaryCompositionSystemService)
+            : base(salaryCompositionSystemService)
         {
             _salaryCompositionSystemService = salaryCompositionSystemService;
         }
@@ -48,28 +43,10 @@ namespace FresherMisa2026.WebAPI.Controllers
             return Ok(response);
         }
 
-        [NonAction]
-        public override Task<ActionResult<ServiceResponse>> AdvancedFilter([FromBody] AdvancedFilterRequest request)
-            => base.AdvancedFilter(request);
-
-        [NonAction]
-        public override Task<ActionResult<ServiceResponse>> AdvancedFilterProc([FromBody] AdvancedFilterRequest request)
-            => base.AdvancedFilterProc(request);
-
-        /// <summary>
-        /// Lọc nâng cao: 1-search mã/tên, 2-loại thành phần, 3-field conditions
-        /// </summary>
-        [HttpPost("AdvancedFilter")]
-        public async Task<ActionResult<ServiceResponse>> AdvancedFilterSystem([FromBody] SalaryCompositionSystemAdvancedFilterRequest request)
-        {
-            var response = await _salaryCompositionSystemService.AdvancedFilterAsync(request);
-            return Ok(response);
-        }
-
         /// <summary>
         /// Lọc nâng cao qua stored procedure: 1-search mã/tên, 2-loại thành phần, 3-field conditions
         /// </summary>
-        [HttpPost("AdvancedFilterProc")]
+        [HttpPost("datapaging")]
         public async Task<ActionResult<ServiceResponse>> AdvancedFilterProcSystem([FromBody] SalaryCompositionSystemAdvancedFilterRequest request)
         {
             var response = await _salaryCompositionSystemService.AdvancedFilterWithProcAsync(request);

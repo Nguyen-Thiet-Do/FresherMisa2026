@@ -1,5 +1,4 @@
 using FresherMisa2026.Entities;
-using FresherMisa2026.Entities.AdvancedFilter;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -8,16 +7,6 @@ namespace FresherMisa2026.Application.Interfaces
 {
     public interface IBaseRepository<TEntity>
     {
-        /// <summary>
-        /// Approach 1: Dynamic SQL — C# build WHERE, values parameterized, an toàn injection
-        /// </summary>
-        Task<(long Total, IEnumerable<TEntity> Data)> GetAdvancedFilterPagingAsync(AdvancedFilterRequest request);
-
-        /// <summary>
-        /// Approach 2: Stored Procedure — truyền filters JSON vào SP, SP tự build WHERE
-        /// </summary>
-        Task<(long Total, IEnumerable<TEntity> Data)> GetAdvancedFilterPagingWithProcAsync(AdvancedFilterRequest request);
-
         /// <summary>
         /// Lấy danh sách thực thể paging
         /// </summary>
@@ -93,5 +82,8 @@ namespace FresherMisa2026.Application.Interfaces
         /// <returns>Số bản ghi bị ảnh hưởng</returns>
         /// CREATED BY: NTDo (24/05/2026)
         Task<int> PatchFieldAsync(Guid entityId, string fieldName, object? value);
+
+        /// <summary>Cập nhật nhiều trường trong một câu UPDATE duy nhất.</summary>
+        Task<int> PatchFieldsAsync(Guid entityId, IReadOnlyDictionary<string, object?> fields);
     }
 }

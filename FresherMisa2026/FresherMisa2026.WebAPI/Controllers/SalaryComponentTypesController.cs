@@ -1,8 +1,6 @@
 using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities.SalaryComponentType;
-using FresherMisa2026.Entities.Settings;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace FresherMisa2026.WebAPI.Controllers
 {
@@ -15,10 +13,8 @@ namespace FresherMisa2026.WebAPI.Controllers
     {
         #region Constructer
 
-        public SalaryComponentTypesController(
-            ISalaryComponentTypeService salaryComponentTypeService,
-            IOptions<PagingSettings> pagingSettings)
-            : base(salaryComponentTypeService, pagingSettings)
+        public SalaryComponentTypesController(ISalaryComponentTypeService salaryComponentTypeService)
+            : base(salaryComponentTypeService)
         {
         }
 

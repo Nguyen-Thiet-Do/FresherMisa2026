@@ -3,96 +3,92 @@ using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Enums;
 using FresherMisa2026.Entities.SalaryCompositionSystem.DTO;
+using Microsoft.Extensions.Logging;
 using SalaryCompositionSystemEntity = FresherMisa2026.Entities.SalaryCompositionSystem.SalaryCompositionSystem;
 
 namespace FresherMisa2026.Application.Services
 {
     /// <summary>
-    /// Service cho SalaryCompositionSystem
-    /// Created By: Nguyen Thiet Do (2026-05-27)
+    /// Service cho danh mục TPL hệ thống.
     /// </summary>
-    public class SalaryCompositionSystemService : BaseService<SalaryCompositionSystemEntity>, ISalaryCompositionSystemService
+    /// <remarks>Created by: ntdo — 27/05/2026 · Refactor: 03/06/2026</remarks>
+    public class SalaryCompositionSystemService
+        : BaseService<SalaryCompositionSystemEntity>, ISalaryCompositionSystemService
     {
         #region Declare
 
         private readonly ISalaryCompositionSystemRepository _systemRepository;
+        private readonly ILogger<SalaryCompositionSystemService> _logger;
 
         #endregion
 
         #region Constructer
 
-        public SalaryCompositionSystemService(ISalaryCompositionSystemRepository repository)
+        public SalaryCompositionSystemService(
+            ISalaryCompositionSystemRepository repository,
+            ILogger<SalaryCompositionSystemService> logger)
             : base(repository)
         {
             _systemRepository = repository;
+            _logger = logger;
         }
 
         #endregion
 
         #region Methods
 
-        /// <summary>
-        /// Lọc thành phần lương hệ thống theo nhiều điều kiện có phân trang
-        /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
+        /// <summary>Lọc TPL hệ thống có phân trang.</summary>
+        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
         public async Task<ServiceResponse> FilterAsync(SalaryCompositionSystemFilterRequest request)
         {
             var (data, total) = await _systemRepository.FilterAsync(request);
-
-            var pagingResponse = new PagingResponse<SalaryCompositionSystemEntity>
-            {
-                Data = data.ToList(),
-                Total = total,
-                PageSize = request.PageSize,
-                CurrentPage = request.PageIndex,
-                PageCount = (long)Math.Ceiling((double)total / request.PageSize)
-            };
-
-            return CreateSuccessResponse(pagingResponse);
+            return CreatePagingResponse(total, request.PageIndex, request.PageSize, data);
         }
 
-        /// <summary>
-        /// Lọc nâng cao 3 phần: search (mã/tên), loại thành phần, field conditions
-        /// </summary>
-        public async Task<ServiceResponse> AdvancedFilterAsync(SalaryCompositionSystemAdvancedFilterRequest request)
-        {
-            var (data, total) = await _systemRepository.AdvancedFilterAsync(request);
-            return CreatePagingResponse(data, total, request.PageIndex, request.PageSize);
-        }
-
-        /// <summary>Lọc nâng cao 3 phần qua stored procedure</summary>
+        /// <summary>Lọc nâng cao 3 phần qua Stored Procedure.</summary>
         public async Task<ServiceResponse> AdvancedFilterWithProcAsync(SalaryCompositionSystemAdvancedFilterRequest request)
         {
-            var (data, total) = await _systemRepository.AdvancedFilterWithProcAsync(request);
-            return CreatePagingResponse(data, total, request.PageIndex, request.PageSize);
-        }
+            var fieldErrors = ValidateFilterFieldNames(request.SearchFields, request.Filters);
+            if (fieldErrors.Count > 0) return CreateValidationErrorResponse(fieldErrors);
 
-        private ServiceResponse CreatePagingResponse(IEnumerable<SalaryCompositionSystemEntity> data, long total, int pageIndex, int pageSize)
-            => CreateSuccessResponse(new PagingResponse<SalaryCompositionSystemEntity>
-            {
-                Data        = data.ToList(),
-                Total       = total,
-                PageSize    = pageSize,
-                CurrentPage = pageIndex,
-                PageCount   = (long)Math.Ceiling((double)total / pageSize)
-            });
+            var (data, total) = await _systemRepository.AdvancedFilterWithProcAsync(request);
+
+            if (request.Columns?.Count > 0)
+                return CreateSuccessResponse(BuildProjectedPaging(total, request.PageIndex, request.PageSize, ProjectColumns(data, request.Columns)));
+
+            return CreatePagingResponse(total, request.PageIndex, request.PageSize, data);
+        }
 
         #endregion
 
         #region OVERRIDE METHODS
 
-        /// <summary>
-        /// Validate tùy chỉnh — BR-05: TaxType chỉ có ý nghĩa khi Nature = Thu nhập
-        /// </summary>
+        /// <summary>Validate: BR-05 — TaxType chỉ có ý nghĩa khi Nature = Income.</summary>
         protected override List<ValidationError> ValidateCustom(SalaryCompositionSystemEntity entity)
         {
             var errors = new List<ValidationError>();
 
             if (entity.TaxType.HasValue && entity.Nature != SalaryNature.Income)
-                errors.Add(new ValidationError("TaxType", "Loại thuế TNCN chỉ áp dụng khi tính chất là Thu nhập"));
+                errors.Add(new ValidationError("TaxType",
+                    "Loại thuế TNCN chỉ áp dụng khi tính chất là Thu nhập"));
 
             return errors;
         }
+
+        #endregion
+
+        #region Private helpers
+
+        private ServiceResponse CreatePagingResponse(long total, int pageIndex, int pageSize,
+            IEnumerable<SalaryCompositionSystemEntity> data)
+            => CreateSuccessResponse(new PagingResponse<SalaryCompositionSystemEntity>
+            {
+                Total       = total,
+                PageSize    = pageSize,
+                CurrentPage = pageIndex,
+                PageCount   = (long)Math.Ceiling((double)total / pageSize),
+                Data        = data.ToList()
+            });
 
         #endregion
     }

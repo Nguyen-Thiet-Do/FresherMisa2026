@@ -5,11 +5,10 @@ using FresherMisa2026.Entities.AdvancedFilter;
 using FresherMisa2026.Entities.Department;
 using FresherMisa2026.Entities.Exceptions;
 using FresherMisa2026.Entities.Extensions;
-using FresherMisa2026.Entities.Settings;
+using ExtNaming = FresherMisa2026.Entities.Extensions.Naming;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using MySqlConnector;
 using System;
 using System.Collections.Generic;
@@ -38,11 +37,11 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     return new DuplicateEntityException("Dữ liệu đã tồn tại trong hệ thống");
 
                 var entryValue = match.Groups[1].Value;
-                var rawKeyName = match.Groups[2].Value.Split('.').Last(); // "UQ_EmployeeCode"
+                var rawKeyName = match.Groups[2].Value.Split('.').Last(); // "UQ_EmployeeCode" hoặc "uq_employee_code"
                 var columnName = rawKeyName.StartsWith("UQ_", StringComparison.OrdinalIgnoreCase)
                     ? rawKeyName[3..]
-                    : rawKeyName; // "EmployeeCode"
-                var fieldName = _modelType.GetColumnDisplayName(columnName); // "Mã nhân viên"
+                    : rawKeyName; // "EmployeeCode" hoặc "employee_code"
+                var fieldName = _modelType.GetColumnDisplayName(columnName); // tự lookup được cả 2 case
                 return new DuplicateEntityException($"{fieldName} '{entryValue}' đã tồn tại");
             }
 
@@ -66,25 +65,36 @@ namespace FresherMisa2026.Infrastructure.Repositories
         protected string _connectionString = string.Empty;
         IConfiguration _configuration;
         protected string _tableName;
-        protected string _keyName;
+        protected string _keyName;      // tên property C# của khóa chính (dùng cho reflection)
+        protected string _keyColumn;    // tên cột DB của khóa chính (snake_case nếu opt-in)
+        protected string _deletedColumn;// tên cột "đã xóa mềm" trong DB
+        protected bool _useSnakeCase;
         public Type _modelType = null;
-        private readonly CacheSettings _cacheSettings;
+        private const int CacheExpirationMinutes = 5;
 
         protected IMemoryCache _cache;
         protected ILogger<BaseRepository<TEntity>> _logger;
 
         //Constructor
-        public BaseRepository(IConfiguration configuration, IMemoryCache cache, ILogger<BaseRepository<TEntity>> logger, IOptions<CacheSettings> cacheSettings)
+        public BaseRepository(IConfiguration configuration, IMemoryCache cache, ILogger<BaseRepository<TEntity>> logger)
         {
             _configuration = configuration;
             _cache = cache;
             _logger = logger;
-            _cacheSettings = cacheSettings.Value;
             _connectionString = _configuration.GetConnectionString("DefaultConnection")!;
             _modelType = typeof(TEntity);
             _tableName = _modelType.GetTableName();
             _keyName = _modelType.GetKeyName();
+            _useSnakeCase = _modelType.GetUseSnakeCase();
+            _keyColumn = _modelType.GetKeyColumn();
+            _deletedColumn = _modelType.GetDeletedColumn();
         }
+
+        // ── SP name templates: snake_case (proc_{table}_{action}) vs PascalCase (Proc_{Action}{Table}) ──
+        private string SpInsert => _useSnakeCase ? $"proc_{_tableName}_insert"             : $"Proc_Insert{_tableName}";
+        private string SpUpdate => _useSnakeCase ? $"proc_{_tableName}_update"             : $"Proc_Update{_tableName}";
+        private string SpDeleteById => _useSnakeCase ? $"proc_{_tableName}_delete_by_id"   : $"Proc_Delete{_tableName}ById";
+        private string SpFilterPaging => _useSnakeCase ? $"proc_{_tableName}_filter_paging" : $"Proc_{_tableName}_FilterPaging";
         protected MySqlConnection CreateConnection()
         {
             return new MySqlConnection(_connectionString);
@@ -113,9 +123,9 @@ namespace FresherMisa2026.Infrastructure.Repositories
             var result = await GetEntitiesUsingCommandTextAsync();
             sw.Stop();
 
-            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(_cacheSettings.ExpirationMinutes));
+            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(CacheExpirationMinutes));
             _logger.LogInformation("[TRUY VẤN DB] GetEntitiesAsync - Bảng: {Table} | Lấy được {Count} bản ghi trong {ElapsedMs}ms | Đã lưu cache {ExpirationMinutes} phút",
-                _tableName, result.Count(), sw.ElapsedMilliseconds, _cacheSettings.ExpirationMinutes);
+                _tableName, result.Count(), sw.ElapsedMilliseconds, CacheExpirationMinutes);
             return result;
         }
 
@@ -126,13 +136,13 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// CREATED BY: DVHAI (11/07/2021)
         protected virtual async Task<IEnumerable<TEntity>> GetEntitiesUsingCommandTextAsync()
         {
-            var query = new StringBuilder($"select * from {_tableName}");
+            var query = new StringBuilder($"select * from `{_tableName}`");
             int whereCount = 0;
 
             if (_modelType.GetHasDeletedColumn())
             {
                 whereCount++;
-                query.Append($" where IsDeleted = FALSE");
+                query.Append($" where `{_deletedColumn}` = FALSE");
             }
             using var connection = CreateConnection();
             await connection.OpenAsync();
@@ -168,7 +178,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 var found = allCached.FirstOrDefault(e => keyProp?.GetValue(e) is Guid id && id == entityId);
                 if (found != null)
                 {
-                    _cache.Set(cacheKey, found, TimeSpan.FromMinutes(_cacheSettings.ExpirationMinutes));
+                    _cache.Set(cacheKey, found, TimeSpan.FromMinutes(CacheExpirationMinutes));
                     _logger.LogInformation("[CACHE TRÚNG - DANH SÁCH] GetEntityByIDAsync - Bảng: {Table} | ID: {Id} | Tìm thấy trong cache danh sách, không cần query DB",
                         _tableName, entityId);
                     return found;
@@ -181,9 +191,9 @@ namespace FresherMisa2026.Infrastructure.Repositories
             var result = await GetEntitieByIdUsingCommandTextAsync(entityId.ToString());
             sw.Stop();
 
-            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(_cacheSettings.ExpirationMinutes));
+            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(CacheExpirationMinutes));
             _logger.LogInformation("[TRUY VẤN DB] GetEntityByIDAsync - Bảng: {Table} | ID: {Id} | Lấy dữ liệu trong {ElapsedMs}ms | Đã lưu cache {ExpirationMinutes} phút",
-                _tableName, entityId, sw.ElapsedMilliseconds, _cacheSettings.ExpirationMinutes);
+                _tableName, entityId, sw.ElapsedMilliseconds, CacheExpirationMinutes);
             return result;
         }
 
@@ -194,24 +204,22 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// <returns></returns>
         protected virtual async Task<TEntity> GetEntitieByIdUsingCommandTextAsync(string id)
         {
-            var query = new StringBuilder($"select * from {_tableName}");
+            var query = new StringBuilder($"select * from `{_tableName}`");
             int whereCount = 0;
 
             Func<StringBuilder, bool> AppendWhere = (query) => { query.Append(whereCount == 0 ? " WHERE " : " AND "); return true; };
 
-            var primaryKey = _keyName;
-
-            if (primaryKey != null)
+            if (!string.IsNullOrEmpty(_keyColumn))
             {
                 AppendWhere(query);
-                query.Append($"{primaryKey} = @Id");
+                query.Append($"`{_keyColumn}` = @Id");
                 whereCount++;
             }
 
             if (_modelType.GetHasDeletedColumn())
             {
                 AppendWhere(query);
-                query.Append("IsDeleted = FALSE");
+                query.Append($"`{_deletedColumn}` = FALSE");
                 whereCount++;
             }
             using var connection = CreateConnection();
@@ -238,10 +246,10 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 try
                 {
                     var dynamicParams = new DynamicParameters();
-                    dynamicParams.Add($"@v_{_keyName}", entityId);
+                    dynamicParams.Add($"@v_{_keyColumn}", entityId);
 
                     //2. Kết nối tới CSDL:
-                    rowAffects = await connection.ExecuteAsync($"Proc_Delete{_tableName}ById", param: dynamicParams, transaction: transaction, commandType: CommandType.StoredProcedure);
+                    rowAffects = await connection.ExecuteAsync(SpDeleteById, param: dynamicParams, transaction: transaction, commandType: CommandType.StoredProcedure);
 
                     transaction.Commit();
                     _cache.Remove($"{_tableName}_all");
@@ -283,10 +291,10 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 foreach (var id in ids)
                 {
                     var dynamicParams = new DynamicParameters();
-                    dynamicParams.Add($"@v_{_keyName}", id);
+                    dynamicParams.Add($"@v_{_keyColumn}", id);
 
                     totalRowAffects += await connection.ExecuteAsync(
-                        $"Proc_Delete{_tableName}ById",
+                        SpDeleteById,
                         param: dynamicParams,
                         transaction: transaction,
                         commandType: CommandType.StoredProcedure);
@@ -336,7 +344,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     var parameters = MappingDbType(entity);
 
                     //2.Thực hiện thêm bản ghi
-                    rowAffects = await connection.ExecuteAsync($"Proc_Insert{_tableName}", param: parameters, transaction: transaction, commandType: CommandType.StoredProcedure);
+                    rowAffects = await connection.ExecuteAsync(SpInsert, param: parameters, transaction: transaction, commandType: CommandType.StoredProcedure);
 
                     await OnAfterInsertInTransactionAsync(entity, connection, transaction);
                     transaction.Commit();
@@ -385,7 +393,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     var parameters = MappingDbType(entity);
 
                     //3. Kết nối tới CSDL:
-                    rowAffects = await connection.ExecuteAsync($"Proc_Update{_tableName}", param: parameters, transaction: transaction, commandType: CommandType.StoredProcedure);
+                    rowAffects = await connection.ExecuteAsync(SpUpdate, param: parameters, transaction: transaction, commandType: CommandType.StoredProcedure);
 
                     await OnAfterUpdateInTransactionAsync(entity, entityId, connection, transaction);
                     transaction.Commit();
@@ -433,13 +441,13 @@ namespace FresherMisa2026.Infrastructure.Repositories
             using var connection = CreateConnection();
             await connection.OpenAsync();
 
-            string store = string.Format("Proc_{0}_FilterPaging", _tableName);
+            string store = SpFilterPaging;
             var parameters = new DynamicParameters();
-            parameters.Add("@v_pageIndex", pageIndex);
-            parameters.Add("@v_pageSize", pageSize);
+            parameters.Add(_useSnakeCase ? "@v_page_index"    : "@v_pageIndex",    pageIndex);
+            parameters.Add(_useSnakeCase ? "@v_page_size"     : "@v_pageSize",     pageSize);
             parameters.Add("@v_search", search);
             parameters.Add("@v_sort", sort);
-            parameters.Add("@v_searchFields", JsonSerializer.Serialize(searchFields));
+            parameters.Add(_useSnakeCase ? "@v_search_fields" : "@v_searchFields", JsonSerializer.Serialize(searchFields));
 
             using var reader = await connection.QueryMultipleAsync(
                 new CommandDefinition(store, parameters, commandType: CommandType.StoredProcedure));
@@ -511,13 +519,13 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     typeof(System.Collections.IEnumerable).IsAssignableFrom(propertyType))
                     continue;
 
-                var propertyName = property.Name;
+                var paramName = _modelType.GetColumnName(property.Name);
                 var propertyValue = property.GetValue(entity);
 
                 if (propertyType == typeof(Guid) || propertyType == typeof(Guid?))
-                    parameters.Add($"@v_{propertyName}", propertyValue, DbType.String);
+                    parameters.Add($"@v_{paramName}", propertyValue, DbType.String);
                 else
-                    parameters.Add($"@v_{propertyName}", propertyValue);
+                    parameters.Add($"@v_{paramName}", propertyValue);
             }
 
             return parameters;
@@ -534,309 +542,24 @@ namespace FresherMisa2026.Infrastructure.Repositories
         #region Advanced Filter
 
         /// <summary>
-        /// Approach 1: C# tự build câu SQL động — field names whitelist qua reflection, values luôn parameterized.
-        /// Endpoint: POST /api/{entity}/AdvancedFilter
+        /// Chuẩn hóa danh sách filter trước khi serialize JSON gửi sang SP:
+        /// chuyển <c>Field</c> từ property name PascalCase sang snake_case nếu entity opt-in,
+        /// để SP có thể nhúng trực tiếp vào câu lệnh <c>sc.`{field}`</c>.
+        /// Khi không opt-in trả về nguyên list ban đầu.
         /// </summary>
-        public virtual async Task<(long Total, IEnumerable<TEntity> Data)> GetAdvancedFilterPagingAsync(AdvancedFilterRequest request)
+        protected IEnumerable<object> ProjectFiltersForSp(IEnumerable<FilterCondition> filters)
         {
-            var filters = request.Filters ?? new List<FilterCondition>();
-            var parameters = new DynamicParameters();
+            if (!_useSnakeCase)
+                return filters.Cast<object>();
 
-            // mandatory conditions — luôn AND (IsDeleted...)
-            var mandatoryParts = new List<string>();
-            if (_modelType.GetHasDeletedColumn())
-                mandatoryParts.Add("IsDeleted = FALSE");
-
-            // user conditions — nối theo Logic (And/Or)
-            var userParts = new List<string>();
-            BuildFilterConditions(filters, parameters, userParts);
-
-            var whereSection = BuildWhereSection(mandatoryParts, userParts, request.Logic);
-
-            var orderBy = BuildSortSql(request.Sort);
-            var pageIndex = Math.Max(1, request.PageIndex);
-            var pageSize = Math.Max(1, request.PageSize);
-            var offset = (pageIndex - 1) * pageSize;
-
-            parameters.Add("@_limit", pageSize);
-            parameters.Add("@_offset", offset);
-
-            var dataSql = $"SELECT * FROM `{_tableName}` {whereSection} {orderBy} LIMIT @_limit OFFSET @_offset";
-            var countSql = $"SELECT COUNT(*) FROM `{_tableName}` {whereSection}";
-
-            using var connection = CreateConnection();
-            await connection.OpenAsync();
-
-            var data = await connection.QueryAsync<TEntity>(dataSql, parameters, commandType: CommandType.Text);
-            var total = await connection.ExecuteScalarAsync<long>(countSql, parameters, commandType: CommandType.Text);
-
-            return (total, data.ToList());
-        }
-
-        /// <summary>
-        /// Ghép mandatory (luôn AND) và user conditions (theo logic) thành WHERE clause.
-        /// Kết quả: WHERE mandatory1 AND mandatory2 AND (user1 OR/AND user2 ...)
-        /// </summary>
-        protected static string BuildWhereSection(List<string> mandatoryParts, List<string> userParts, FilterLogic logic)
-        {
-            var parts = new List<string>(mandatoryParts);
-
-            if (userParts.Count > 0)
+            return filters.Select(f => (object)new
             {
-                var sep = logic == FilterLogic.Or ? " OR " : " AND ";
-                var userBlock = userParts.Count == 1
-                    ? userParts[0]
-                    : $"({string.Join(sep, userParts)})";
-                parts.Add(userBlock);
-            }
-
-            return parts.Count > 0 ? $"WHERE {string.Join(" AND ", parts)}" : string.Empty;
-        }
-
-        /// <summary>
-        /// Approach 2: Truyền filters dưới dạng JSON vào stored procedure — SP tự build WHERE.
-        /// C# vẫn validate field names trước khi gọi SP.
-        /// Endpoint: POST /api/{entity}/AdvancedFilterProc
-        /// </summary>
-        public async Task<(long Total, IEnumerable<TEntity> Data)> GetAdvancedFilterPagingWithProcAsync(AdvancedFilterRequest request)
-        {
-            var filters = request.Filters ?? new List<FilterCondition>();
-            ValidateFilterFields(filters);
-
-            using var connection = CreateConnection();
-            await connection.OpenAsync();
-
-            var store = $"Proc_{_tableName}_AdvancedFilterPaging";
-            var parameters = new DynamicParameters();
-            parameters.Add("@v_pageIndex", Math.Max(1, request.PageIndex));
-            parameters.Add("@v_pageSize", Math.Max(1, request.PageSize));
-            parameters.Add("@v_sort", request.Sort ?? string.Empty);
-            parameters.Add("@v_filters", JsonSerializer.Serialize(filters));
-            parameters.Add("@v_logic", (int)request.Logic);
-
-            using var reader = await connection.QueryMultipleAsync(
-                new CommandDefinition(store, parameters, commandType: CommandType.StoredProcedure));
-
-            var data = (await reader.ReadAsync<TEntity>()).ToList();
-            var total = await reader.ReadFirstAsync<long>();
-
-            return (total, data);
-        }
-
-        /// <summary>
-        /// Validate tất cả field names trong filters phải tồn tại trên entity — dùng cho cả 2 approach.
-        /// </summary>
-        private void ValidateFilterFields(List<FilterCondition> filters)
-        {
-            var validProps = _modelType.GetProperties()
-                .Select(p => p.Name)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var filter in filters)
-            {
-                if (!validProps.Contains(filter.Field))
-                    throw new ArgumentException($"Trường '{filter.Field}' không tồn tại trên entity {_tableName}");
-            }
-        }
-
-        /// <summary>
-        /// Build ORDER BY từ sort string (ví dụ: "-Salary,+EmployeeName").
-        /// Field names được validate qua reflection — không thể inject.
-        /// </summary>
-        protected string BuildSortSql(string? sort)
-        {
-            if (string.IsNullOrWhiteSpace(sort))
-                return $"ORDER BY `{_keyName}` DESC";
-
-            var validProps = _modelType.GetProperties()
-                .ToDictionary(p => p.Name, p => p.Name, StringComparer.OrdinalIgnoreCase);
-
-            var orderParts = sort
-                .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(part =>
-                {
-                    var trimmed = part.Trim();
-                    var isDesc = trimmed.StartsWith('-');
-                    var fieldName = trimmed.TrimStart('+', '-').Trim();
-                    return validProps.TryGetValue(fieldName, out var actual)
-                        ? $"`{actual}` {(isDesc ? "DESC" : "ASC")}"
-                        : null;
-                })
-                .Where(s => s != null)
-                .ToList();
-
-            return orderParts.Count > 0
-                ? $"ORDER BY {string.Join(", ", orderParts)}"
-                : $"ORDER BY `{_keyName}` DESC";
-        }
-
-        /// <summary>
-        /// Build danh sách WHERE conditions từ filters.
-        /// Field names: whitelist qua reflection → safe. Values: Dapper parameters → safe.
-        /// </summary>
-        protected void BuildFilterConditions(List<FilterCondition> filters, DynamicParameters parameters, List<string> whereParts)
-        {
-            var validProps = _modelType.GetProperties()
-                .ToDictionary(p => p.Name, p => p, StringComparer.OrdinalIgnoreCase);
-
-            for (int i = 0; i < filters.Count; i++)
-            {
-                var filter = filters[i];
-
-                if (!validProps.TryGetValue(filter.Field, out var prop))
-                    throw new ArgumentException($"Trường '{filter.Field}' không tồn tại trên entity {_tableName}");
-
-                var col = $"`{prop.Name}`";
-                var p = $"@fp{i}";
-                var pTo = $"@fp{i}to";
-                string? condition = null;
-
-                switch (filter.Operator)
-                {
-                    case FilterOperator.Eq:
-                        condition = $"{col} = {p}";
-                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
-                        break;
-                    case FilterOperator.Neq:
-                        condition = $"{col} <> {p}";
-                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
-                        break;
-                    case FilterOperator.Contains:
-                        condition = $"{col} LIKE CONCAT('%', {p}, '%')";
-                        parameters.Add(p, filter.Value?.GetString());
-                        break;
-                    case FilterOperator.NotContains:
-                        condition = $"{col} NOT LIKE CONCAT('%', {p}, '%')";
-                        parameters.Add(p, filter.Value?.GetString());
-                        break;
-                    case FilterOperator.StartsWith:
-                        condition = $"{col} LIKE CONCAT({p}, '%')";
-                        parameters.Add(p, filter.Value?.GetString());
-                        break;
-                    case FilterOperator.EndsWith:
-                        condition = $"{col} LIKE CONCAT('%', {p})";
-                        parameters.Add(p, filter.Value?.GetString());
-                        break;
-                    case FilterOperator.Empty:
-                        condition = $"({col} IS NULL OR {col} = '')";
-                        break;
-                    case FilterOperator.NotEmpty:
-                        condition = $"({col} IS NOT NULL AND {col} <> '')";
-                        break;
-                    case FilterOperator.Gt:
-                        condition = $"{col} > {p}";
-                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
-                        break;
-                    case FilterOperator.Lt:
-                        condition = $"{col} < {p}";
-                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
-                        break;
-                    case FilterOperator.Gte:
-                        condition = $"{col} >= {p}";
-                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
-                        break;
-                    case FilterOperator.Lte:
-                        condition = $"{col} <= {p}";
-                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
-                        break;
-                    case FilterOperator.Between:
-                        condition = $"{col} BETWEEN {p} AND {pTo}";
-                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
-                        parameters.Add(pTo, ConvertValue(filter.ValueTo, prop.PropertyType));
-                        break;
-                    case FilterOperator.NotBetween:
-                        condition = $"{col} NOT BETWEEN {p} AND {pTo}";
-                        parameters.Add(p, ConvertValue(filter.Value, prop.PropertyType));
-                        parameters.Add(pTo, ConvertValue(filter.ValueTo, prop.PropertyType));
-                        break;
-                    case FilterOperator.Today:
-                        condition = $"DATE({col}) = CURDATE()";
-                        break;
-                    case FilterOperator.ThisWeek:
-                        condition = $"{col} BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) " +
-                                    $"AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY)";
-                        break;
-                    case FilterOperator.ThisMonth:
-                        condition = $"{col} BETWEEN DATE_FORMAT(CURDATE(), '%Y-%m-01') AND LAST_DAY(CURDATE())";
-                        break;
-                    case FilterOperator.ThisYear:
-                        condition = $"{col} BETWEEN DATE_FORMAT(CURDATE(), '%Y-01-01') AND DATE_FORMAT(CURDATE(), '%Y-12-31')";
-                        break;
-                    case FilterOperator.LastNDays:
-                        var lastN = GetIntValue(filter.Value, 30);
-                        condition = $"{col} >= DATE_SUB(CURDATE(), INTERVAL {lastN} DAY)";
-                        break;
-                    case FilterOperator.NextNDays:
-                        var nextN = GetIntValue(filter.Value, 7);
-                        condition = $"{col} BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL {nextN} DAY)";
-                        break;
-                    case FilterOperator.In:
-                        var inParams = BuildMultiValueParams(filter.Values, prop.PropertyType, $"fpi{i}", parameters);
-                        condition = inParams.Count > 0
-                            ? $"{col} IN ({string.Join(", ", inParams)})"
-                            : "1 = 0";
-                        break;
-                    case FilterOperator.NotIn:
-                        var notInParams = BuildMultiValueParams(filter.Values, prop.PropertyType, $"fpni{i}", parameters);
-                        condition = notInParams.Count > 0
-                            ? $"{col} NOT IN ({string.Join(", ", notInParams)})"
-                            : "1 = 1";
-                        break;
-                }
-
-                if (condition != null)
-                    whereParts.Add(condition);
-            }
-        }
-
-        private List<string> BuildMultiValueParams(List<JsonElement>? values, Type targetType, string prefix, DynamicParameters parameters)
-        {
-            if (values == null || values.Count == 0) return new List<string>();
-
-            var paramNames = new List<string>();
-            for (int j = 0; j < values.Count; j++)
-            {
-                var key = $"@{prefix}_{j}";
-                parameters.Add(key, ConvertValue(values[j], targetType));
-                paramNames.Add(key);
-            }
-            return paramNames;
-        }
-
-        private static object? ConvertValue(JsonElement? element, Type targetType)
-        {
-            if (!element.HasValue || element.Value.ValueKind == JsonValueKind.Null) return null;
-
-            var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
-            var kind = element.Value.ValueKind;
-
-            if (underlying == typeof(Guid)) return element.Value.GetString();
-            if (underlying == typeof(DateTime))
-                return kind == JsonValueKind.String ? element.Value.GetDateTime() : (object?)null;
-            if (underlying == typeof(decimal))
-                return kind == JsonValueKind.Number ? element.Value.GetDecimal() : decimal.Parse(element.Value.GetString() ?? "0");
-            if (underlying == typeof(double))
-                return kind == JsonValueKind.Number ? element.Value.GetDouble() : double.Parse(element.Value.GetString() ?? "0");
-            if (underlying == typeof(int))
-                return kind == JsonValueKind.Number ? element.Value.GetInt32() : int.Parse(element.Value.GetString() ?? "0");
-            if (underlying == typeof(long))
-                return kind == JsonValueKind.Number ? element.Value.GetInt64() : long.Parse(element.Value.GetString() ?? "0");
-            if (underlying == typeof(bool))
-            {
-                if (kind == JsonValueKind.True) return true;
-                if (kind == JsonValueKind.False) return false;
-                return bool.TryParse(element.Value.GetString(), out var b) ? b : false;
-            }
-
-            return element.Value.GetString();
-        }
-
-        private static int GetIntValue(JsonElement? element, int defaultValue = 0)
-        {
-            if (!element.HasValue || element.Value.ValueKind == JsonValueKind.Null) return defaultValue;
-            return element.Value.ValueKind == JsonValueKind.Number
-                ? element.Value.GetInt32()
-                : defaultValue;
+                field = ExtNaming.ToSnakeCase(f.Field),
+                @operator = f.Operator.ToString(),
+                value = f.Value,
+                valueTo = f.ValueTo,
+                values = f.Values,
+            });
         }
 
         #endregion
@@ -850,12 +573,56 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// <param name="value">Giá trị mới đã được convert đúng kiểu</param>
         /// <returns>Số bản ghi bị ảnh hưởng</returns>
         /// CREATED BY: NTDo (24/05/2026)
+        public async Task<int> PatchFieldsAsync(Guid entityId, IReadOnlyDictionary<string, object?> fields)
+        {
+            var setClauses = new List<string>(fields.Count);
+            var parameters = new DynamicParameters();
+            parameters.Add("@id", entityId.ToString());
+
+            int i = 0;
+            foreach (var (fieldName, value) in fields)
+            {
+                var columnName = _modelType.GetColumnName(fieldName);
+                var paramName = $"@v_{i++}";
+                setClauses.Add($"`{columnName}` = {paramName}");
+                parameters.Add(paramName, value);
+            }
+
+            var sql = new StringBuilder(
+                $"UPDATE `{_tableName}` SET {string.Join(", ", setClauses)} WHERE `{_keyColumn}` = @id");
+            if (_modelType.GetHasDeletedColumn())
+                sql.Append($" AND `{_deletedColumn}` = FALSE");
+
+            using var connection = CreateConnection();
+            await connection.OpenAsync();
+
+            int rows;
+            try
+            {
+                rows = await connection.ExecuteAsync(sql.ToString(), parameters, commandType: CommandType.Text);
+            }
+            catch (MySqlException ex)
+            {
+                throw TranslateMySqlException(ex);
+            }
+
+            if (rows > 0)
+            {
+                _cache.Remove($"{_tableName}_all");
+                _cache.Remove($"{_tableName}_{entityId}");
+            }
+
+            return rows;
+        }
+
         public async Task<int> PatchFieldAsync(Guid entityId, string fieldName, object? value)
         {
-            var sql = new StringBuilder($"UPDATE `{_tableName}` SET `{fieldName}` = @value WHERE `{_keyName}` = @id");
+            // fieldName từ Service luôn là C# property name → convert sang DB column name nếu opt-in
+            var columnName = _modelType.GetColumnName(fieldName);
+            var sql = new StringBuilder($"UPDATE `{_tableName}` SET `{columnName}` = @value WHERE `{_keyColumn}` = @id");
 
             if (_modelType.GetHasDeletedColumn())
-                sql.Append(" AND IsDeleted = FALSE");
+                sql.Append($" AND `{_deletedColumn}` = FALSE");
 
             using var connection = CreateConnection();
             await connection.OpenAsync();
@@ -898,15 +665,17 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
             foreach (var column in uniqueColumns)
             {
+                // UniqueColumns trong [ConfigTable] là property name (PascalCase). DB column = snake_case nếu opt-in.
                 var prop = _modelType.GetProperty(column);
                 if (prop == null) continue;
 
                 var value = prop.GetValue(entity);
                 if (value == null) continue;
 
+                var dbColumn = _modelType.GetColumnName(column);
                 var sql = excludeId.HasValue
-                    ? $"SELECT COUNT(*) FROM {_tableName} WHERE {column} = @value AND {_keyName} != @excludeId"
-                    : $"SELECT COUNT(*) FROM {_tableName} WHERE {column} = @value";
+                    ? $"SELECT COUNT(*) FROM `{_tableName}` WHERE `{dbColumn}` = @value AND `{_keyColumn}` != @excludeId"
+                    : $"SELECT COUNT(*) FROM `{_tableName}` WHERE `{dbColumn}` = @value";
 
                 var count = await connection.ExecuteScalarAsync<int>(sql, new { value, excludeId = excludeId?.ToString() });
                 if (count > 0)

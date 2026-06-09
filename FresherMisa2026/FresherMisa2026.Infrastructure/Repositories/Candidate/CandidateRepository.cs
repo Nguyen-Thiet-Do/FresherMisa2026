@@ -4,11 +4,9 @@ using FresherMisa2026.Application.Interfaces.Repositories;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Candidate;
 using FresherMisa2026.Entities.Candidate.DTO;
-using FresherMisa2026.Entities.Settings;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Data;
 
 namespace FresherMisa2026.Infrastructure.Repositories
@@ -18,9 +16,8 @@ namespace FresherMisa2026.Infrastructure.Repositories
         public CandidateRepository(
             IConfiguration configuration,
             IMemoryCache cache,
-            ILogger<BaseRepository<Candidate>> logger,
-            IOptions<CacheSettings> cacheSettings)
-            : base(configuration, cache, logger, cacheSettings)
+            ILogger<BaseRepository<Candidate>> logger)
+            : base(configuration, cache, logger)
         {
         }
 

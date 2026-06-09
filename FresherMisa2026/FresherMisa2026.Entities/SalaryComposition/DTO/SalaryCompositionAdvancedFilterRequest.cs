@@ -9,8 +9,11 @@ namespace FresherMisa2026.Entities.SalaryComposition.DTO
         public int PageSize { get; set; } = 10;
         public string? Sort { get; set; }
 
-        /// <summary>Phần 1 — tìm kiếm theo Mã hoặc Tên (OR)</summary>
+        /// <summary>Phần 1 — từ khóa tìm kiếm</summary>
         public string? Search { get; set; }
+
+        /// <summary>Phần 1 — danh sách trường search (OR). NULL = ['Code','Name']</summary>
+        public List<string>? SearchFields { get; set; }
 
         /// <summary>Phần 2 — lọc theo trạng thái</summary>
         public SalaryCompositionStatus? Status { get; set; }
@@ -23,5 +26,8 @@ namespace FresherMisa2026.Entities.SalaryComposition.DTO
 
         /// <summary>Logic nối các conditions ở Phần 4 — And (mặc định) hoặc Or</summary>
         public FilterLogic FilterLogic { get; set; } = FilterLogic.And;
+
+        /// <summary>Danh sách tên property muốn lấy. NULL hoặc rỗng = trả tất cả cột.</summary>
+        public List<string>? Columns { get; set; }
     }
 }

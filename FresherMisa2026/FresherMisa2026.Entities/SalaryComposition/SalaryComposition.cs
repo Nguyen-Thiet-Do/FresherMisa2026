@@ -1,7 +1,5 @@
 using FresherMisa2026.Entities.Enums;
 using FresherMisa2026.Entities.Extensions;
-using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace FresherMisa2026.Entities.SalaryComposition
@@ -10,7 +8,7 @@ namespace FresherMisa2026.Entities.SalaryComposition
     /// Thành phần lương của đơn vị — bảng nghiệp vụ trung tâm
     /// Created By: Nguyen Thiet Do (2026-05-26)
     /// </summary>
-    [ConfigTable("pa_salary_composition", true, "Code")]
+    [ConfigTable("pa_salary_composition", true, "Code", useSnakeCase: true)]
     public class SalaryComposition : BaseModel
     {
         #region Declare
@@ -77,6 +75,9 @@ namespace FresherMisa2026.Entities.SalaryComposition
         /// <summary>Công thức phần miễn thuế TNCN — chỉ dùng khi TaxType = PartiallyExempt (3)</summary>
         public string? ExemptFormula { get; set; }
 
+        /// <summary>Ghi nhớ công thức nào được tự suy — dùng khi update để re-derive đúng khi ValueFormula thay đổi</summary>
+        public TaxFormulaSource TaxFormulaSource { get; set; } = TaxFormulaSource.None;
+
         /// <summary>BR-09: Cho phép vượt định mức</summary>
         public bool AllowExceedNorm { get; set; } = false;
 
@@ -96,6 +97,13 @@ namespace FresherMisa2026.Entities.SalaryComposition
         /// SP bỏ qua param thừa nên không ảnh hưởng.
         /// </summary>
         public bool IsSkipUnfollowedComposition { get; set; } = false;
+
+        /// <summary>
+        /// Snapshot danh sách ID field bị khóa, copy từ TPL hệ thống tại thời điểm kế thừa.
+        /// Lưu dạng JSON array of int (ví dụ "[1,2,5]"). Tham chiếu <see cref="LockableField"/>.
+        /// Null/rỗng khi Source = Custom (không bị khóa field nào ngoài Code).
+        /// </summary>
+        public string? LockedFields { get; set; }
 
         #endregion
     }

@@ -8,7 +8,7 @@ namespace FresherMisa2026.Entities.GridConfig
     /// Cấu hình cột bảng theo từng người dùng (ghim, ẩn/hiện, độ rộng, thứ tự)
     /// Created By: Nguyen Thiet Do (2026-05-26)
     /// </summary>
-    [ConfigTable("pa_grid_config", false, "")]
+    [ConfigTable("pa_grid_config", false, "", useSnakeCase: true)]
     public class GridConfig : BaseModel
     {
         #region Declare

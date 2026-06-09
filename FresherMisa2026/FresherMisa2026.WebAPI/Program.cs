@@ -1,7 +1,6 @@
 using FresherMisa2026.Application;
 using FresherMisa2026.Application.Extensions;
 using FresherMisa2026.Entities.FileUpload;
-using FresherMisa2026.Entities.Settings;
 using FresherMisa2026.Infrastructure;
 using FresherMisa2026.WebAPI.Middlewares;
 
@@ -41,8 +40,6 @@ builder.Services.Configure<FileUploadSettings>(options =>
     options.BasePath = builder.Environment.WebRootPath;
 });
 
-builder.Services.Configure<CacheSettings>(builder.Configuration.GetSection("Cache"));
-builder.Services.Configure<PagingSettings>(builder.Configuration.GetSection("Paging"));
 
 var app = builder.Build();
 

@@ -9,7 +9,7 @@ namespace FresherMisa2026.Entities.SalaryCompositionSystem
     /// Danh mục thành phần lương chuẩn của hệ thống (chỉ đọc với người dùng)
     /// Created By: Nguyen Thiet Do (2026-05-26)
     /// </summary>
-    [ConfigTable("pa_salary_composition_system", false, "Code")]
+    [ConfigTable("pa_salary_composition_system", false, "Code", useSnakeCase: true)]
     public class SalaryCompositionSystem : BaseModel
     {
         #region Declare
@@ -60,6 +60,12 @@ namespace FresherMisa2026.Entities.SalaryCompositionSystem
         public string? Description { get; set; }
 
         public bool ShowOnPayslip { get; set; } = true;
+
+        /// <summary>
+        /// Danh sách ID field bị khóa khi TPL được kế thừa (JSON array of int, ví dụ "[1,2,5]").
+        /// ID tham chiếu <see cref="LockableField"/>. Null hoặc rỗng = chỉ Code bị khóa cứng.
+        /// </summary>
+        public string? LockedFields { get; set; }
 
         #endregion
     }

@@ -6,7 +6,7 @@ namespace FresherMisa2026.Entities.SalaryComposition
 {
     /// <summary>
     /// Thành phần lương của đơn vị — bảng nghiệp vụ trung tâm
-    /// Created By: Nguyen Thiet Do (2026-05-26)
+    /// Created By: ntdo (2026-06-02)
     /// </summary>
     [ConfigTable("pa_salary_composition", true, "Code", useSnakeCase: true)]
     public class SalaryComposition : BaseModel
@@ -97,6 +97,12 @@ namespace FresherMisa2026.Entities.SalaryComposition
         /// SP bỏ qua param thừa nên không ảnh hưởng.
         /// </summary>
         public bool IsSkipUnfollowedComposition { get; set; } = false;
+
+        /// <summary>
+        /// Không lưu DB — FE truyền true khi người dùng chọn "vẫn thêm mới bình thường"
+        /// dù mã trùng với TPL hệ thống chưa kế thừa.
+        /// </summary>
+        public bool IsSkipSystemCodeCheck { get; set; } = false;
 
         /// <summary>
         /// Snapshot danh sách ID field bị khóa, copy từ TPL hệ thống tại thời điểm kế thừa.

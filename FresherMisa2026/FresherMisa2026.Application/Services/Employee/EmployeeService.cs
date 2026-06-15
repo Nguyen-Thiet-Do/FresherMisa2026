@@ -11,6 +11,10 @@ using System.Text.RegularExpressions;
 
 namespace FresherMisa2026.Application.Services
 {
+    /// <summary>
+    /// Service cho Employee
+    /// Created By: ntdo (2026-04-18)
+    /// </summary>
     public partial class EmployeeService : BaseService<Employee>, IEmployeeService
     {
         private readonly IEmployeeRepository _employeeRepository;
@@ -23,14 +27,17 @@ namespace FresherMisa2026.Application.Services
             IBaseRepository<Employee> baseRepository,
             IEmployeeRepository employeeRepository,
             IDepartmentRepository departmentRepository,
-            IPositionRepository positionRepository
-            ) : base(baseRepository)
+            IPositionRepository positionRepository,
+            IAuditLogRepository auditLogRepository
+            ) : base(baseRepository, auditLogRepository)
         {
             _employeeRepository = employeeRepository;
             _departmentRepository = departmentRepository;
             _positionRepository = positionRepository;
         }
 
+        /// <summary>Lấy nhân viên theo mã</summary>
+        /// Created By: ntdo (2026-04-18)
         public async Task<Employee> GetEmployeeByCodeAsync(string code)
         {
             var employee = await _employeeRepository.GetEmployeeByCode(code);
@@ -40,22 +47,30 @@ namespace FresherMisa2026.Application.Services
             return employee;
         }
 
+        /// <summary>Lấy danh sách nhân viên theo phòng ban</summary>
+        /// Created By: ntdo (2026-04-18)
         public async Task<IEnumerable<Employee>> GetEmployeesByDepartmentIdAsync(Guid departmentId)
         {
             return await _employeeRepository.GetEmployeesByDepartmentId(departmentId);
         }
 
+        /// <summary>Lấy danh sách nhân viên theo vị trí</summary>
+        /// Created By: ntdo (2026-04-19)
         public async Task<IEnumerable<Employee>> GetEmployeesByPositionIdAsync(Guid positionId)
         {
             return await _employeeRepository.GetEmployeesByPositionId(positionId);
         }
 
+        /// <summary>Validate trước khi thêm nhân viên</summary>
+        /// Created By: ntdo (2026-04-19)
         protected override async Task<List<ValidationError>> ValidateBeforeInsertAsync(Employee employee)
         {
             return await ValidateBusinessRulesAsync(employee, null);
         }
 
-        protected override async Task<List<ValidationError>> ValidateBeforeUpdateAsync(Guid entityId, Employee employee)
+        /// <summary>Validate trước khi cập nhật nhân viên</summary>
+        /// Created By: ntdo (2026-04-19)
+        protected override async Task<List<ValidationError>> ValidateBeforeUpdateAsync(Guid entityId, Employee employee, Employee existingEntity)
         {
             return await ValidateBusinessRulesAsync(employee, entityId);
         }
@@ -105,7 +120,7 @@ namespace FresherMisa2026.Application.Services
         /// <param name="employee"></param>
         /// <param name="currentEmployeeId"></param>
         /// <returns></returns>
-        /// Created By: ntdo (17/04/2026)
+        /// Created By: ntdo (2026-04-18)
 
         private async Task<List<ValidationError>> ValidateBusinessRulesAsync(Employee employee, Guid? currentEmployeeId)
         {
@@ -152,7 +167,7 @@ namespace FresherMisa2026.Application.Services
         /// </summary>
         /// <param name="request"></param>
         /// <returns></returns>
-        /// Created By: ntdo (17/04/2026)
+        /// Created By: ntdo (2026-04-19)
         private async Task<ValidationError?> ValidateDuplicateCodeAsync(string? employeeCode, Guid? currentEmployeeId)
         {
             if (string.IsNullOrWhiteSpace(employeeCode))
@@ -174,7 +189,7 @@ namespace FresherMisa2026.Application.Services
         /// </summary>
         /// <param name="request"></param>
         /// <returns></returns>
-        /// Created By: ntdo (17/04/2026)
+        /// Created By: ntdo (2026-04-23)
         public async Task<ServiceResponse> FilterEmployeesAsync(EmployeeFilterRequest request)
         {
             var validationError = ValidateFilterRequest(request);
@@ -184,6 +199,8 @@ namespace FresherMisa2026.Application.Services
             return CreateSuccessResponse(data);
         }
 
+        /// <summary>Lọc nhân viên có phân trang</summary>
+        /// Created By: ntdo (2026-04-23)
         public async Task<ServiceResponse> FilterEmployeesPagingAsync(EmployeeFilterRequest request)
         {
             var validationError = ValidateFilterRequest(request);
@@ -203,6 +220,8 @@ namespace FresherMisa2026.Application.Services
             });
         }
 
+        /// <summary>Validate các tham số filter</summary>
+        /// Created By: ntdo (2026-04-20)
         private ServiceResponse? ValidateFilterRequest(EmployeeFilterRequest request)
         {
             if (request.SalaryFrom.HasValue && request.SalaryTo.HasValue && request.SalaryFrom > request.SalaryTo)

@@ -6,14 +6,16 @@ namespace FresherMisa2026.Application.Services
 {
     /// <summary>
     /// Service cho Organization
-    /// Created By: Nguyen Thiet Do (2026-05-27)
+    /// Created By: ntdo (2026-06-04)
     /// </summary>
     public class OrganizationService : BaseService<Organization>, IOrganizationService
     {
         #region Constructer
 
-        public OrganizationService(IOrganizationRepository organizationRepository)
-            : base(organizationRepository)
+        public OrganizationService(
+            IOrganizationRepository organizationRepository,
+            IAuditLogRepository auditLogRepository)
+            : base(organizationRepository, auditLogRepository)
         {
         }
 

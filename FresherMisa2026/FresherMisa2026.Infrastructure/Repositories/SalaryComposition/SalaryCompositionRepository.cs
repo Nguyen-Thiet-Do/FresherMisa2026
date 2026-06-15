@@ -2,10 +2,10 @@ using Dapper;
 using FresherMisa2026.Application.Interfaces.Repositories;
 using FresherMisa2026.Entities.AdvancedFilter;
 using FresherMisa2026.Entities.Extensions;
+using FresherMisa2026.Entities.Enums;
 using FresherMisa2026.Entities.SalaryComposition;
 using FresherMisa2026.Entities.SalaryComposition.DTO;
 using FresherMisa2026.Infrastructure.Persistence.Queries;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Data;
@@ -18,7 +18,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
     /// <summary>
     /// Repository cho SalaryComposition — dùng database amis_tien_luong (SalaryConnection).
     /// </summary>
-    /// <remarks>Created by: ntdo — 27/05/2026 · Refactor: 03/06/2026</remarks>
+    /// <remarks>Created by: ntdo — 2026-06-07 · Refactor: 03/06/2026</remarks>
     public class SalaryCompositionRepository
         : BaseRepository<SalaryCompositionEntity>, ISalaryCompositionRepository
     {
@@ -32,9 +32,8 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
         public SalaryCompositionRepository(
             IConfiguration configuration,
-            IMemoryCache cache,
             ILogger<BaseRepository<SalaryCompositionEntity>> logger)
-            : base(configuration, cache, logger)
+            : base(configuration, logger)
         {
             _connectionString = configuration.GetConnectionString(SalaryCompositionConstants.ConnectionName)!;
         }
@@ -47,7 +46,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// Lấy toàn bộ TPL (kèm tên loại + danh sách đơn vị áp dụng).
         /// </summary>
         /// <returns>Danh sách TPL không bị xóa.</returns>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
+        /// <remarks>Created by: ntdo — 2026-06-07</remarks>
         protected override async Task<IEnumerable<SalaryCompositionEntity>> GetEntitiesUsingCommandTextAsync()
         {
             var sql = SalaryQueries.SelectSalaryCompositionWithJoin + " WHERE sc.`is_deleted` = FALSE";
@@ -61,7 +60,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// </summary>
         /// <param name="id">ID dạng chuỗi (Guid.ToString()).</param>
         /// <returns>Entity hoặc null nếu không tìm thấy / đã xóa.</returns>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
+        /// <remarks>Created by: ntdo — 2026-06-07</remarks>
         protected override async Task<SalaryCompositionEntity> GetEntitieByIdUsingCommandTextAsync(string id)
         {
             var sql = SalaryQueries.SelectSalaryCompositionWithJoin
@@ -78,7 +77,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// <summary>Lọc nâng cao 4 phần qua stored procedure (SP tự build WHERE).</summary>
         /// <param name="request">Điều kiện lọc nâng cao của TPL.</param>
         /// <returns>Dữ liệu trang hiện tại và tổng số.</returns>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
+        /// <remarks>Created by: ntdo — 2026-06-07</remarks>
         public async Task<(IEnumerable<SalaryCompositionEntity> Data, long Total)>
             AdvancedFilterWithProcAsync(SalaryCompositionAdvancedFilterRequest request)
         {
@@ -108,33 +107,79 @@ namespace FresherMisa2026.Infrastructure.Repositories
             return (data, total);
         }
 
-        /// <summary>Lọc TPL theo nhiều điều kiện qua stored procedure FilterPaging.</summary>
-        /// <param name="request">Điều kiện lọc cơ bản.</param>
-        /// <returns>Dữ liệu trang hiện tại và tổng số.</returns>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
-        public async Task<(IEnumerable<SalaryCompositionEntity> Data, long Total)>
-            FilterAsync(SalaryCompositionFilterRequest request)
-        {
-            var parameters = new DynamicParameters();
-            parameters.Add("v_search",            request.Search);
-            parameters.Add("v_organization_ids",  SerializeGuidListOrNull(request.OrganizationIDs));
-            parameters.Add("v_component_type_id", request.ComponentTypeID?.ToString());
-            parameters.Add("v_nature",            request.Nature.HasValue  ? (int?)request.Nature  : null);
-            parameters.Add("v_status",            request.Status.HasValue  ? (int?)request.Status  : null);
-            parameters.Add("v_source",            request.Source.HasValue  ? (int?)request.Source  : null);
-            parameters.Add("v_page_index",        request.PageIndex);
-            parameters.Add("v_page_size",         request.PageSize);
+#endregion
 
+        #region Methods - Lookup
+
+        /// <summary>Kiểm tra có TPL kế thừa từ hệ thống với Code cho trước chưa.</summary>
+        public async Task<bool> ExistsInheritedByCodeAsync(string code)
+        {
+            const string sql = @"SELECT COUNT(1) FROM `pa_salary_composition`
+                                 WHERE `source` = @source AND `code` = @code AND `is_deleted` = FALSE";
             using var connection = CreateConnection();
             await connection.OpenAsync();
-            using var multi = await connection.QueryMultipleAsync(
-                SalaryQueries.ProcSalaryCompositionFilter,
-                parameters,
-                commandType: CommandType.StoredProcedure);
+            var count = await connection.ExecuteScalarAsync<int>(sql,
+                new { source = (int)SalaryCompositionSource.InheritedFromSystem, code });
+            return count > 0;
+        }
 
-            var data  = (await multi.ReadAsync<SalaryCompositionEntity>()).ToList();
-            var total = await multi.ReadFirstAsync<long>();
-            return (data, total);
+        /// <summary>
+        /// Lấy Code, Name, Status của các TPL khớp danh sách code — chỉ query đúng K rows thay vì toàn bảng.
+        /// </summary>
+        public async Task<IEnumerable<(string Code, string Name, SalaryCompositionStatus Status)>>
+            GetCodeInfoByCodesAsync(IEnumerable<string> codes)
+        {
+            var codeList = codes.ToList();
+            if (codeList.Count == 0)
+                return Enumerable.Empty<(string, string, SalaryCompositionStatus)>();
+
+            const string sql = @"SELECT `code`, `name`, `status`
+                                 FROM `pa_salary_composition`
+                                 WHERE `code` IN @codes AND `is_deleted` = FALSE";
+            using var connection = CreateConnection();
+            await connection.OpenAsync();
+            var rows = await connection.QueryAsync<SalaryCompositionEntity>(sql, new { codes = codeList });
+            return rows.Select(e => (e.Code, e.Name, e.Status));
+        }
+
+/// <summary>
+        /// Kiểm tra mã TPL có đang được tham chiếu trong công thức của bất kỳ TPL nào khác không.
+        /// Dùng MySQL REGEXP word-boundary [[:<:]] / [[:>:]] thay vì fetch toàn bảng về C#.
+        /// </summary>
+        public async Task<bool> IsCodeReferencedInFormulasAsync(string code, Guid excludeId)
+        {
+            // Code chỉ chứa [A-Za-z0-9_] (đã validate) — không cần escape REGEXP
+            var pattern = $"[[:<:]]{code}[[:>:]]";
+            const string sql = @"SELECT COUNT(1) FROM `pa_salary_composition`
+                                 WHERE `salary_composition_id` != @excludeId AND `is_deleted` = FALSE
+                                   AND (    `value_formula`   REGEXP @pattern
+                                         OR `norm_formula`    REGEXP @pattern
+                                         OR `taxable_formula` REGEXP @pattern
+                                         OR `exempt_formula`  REGEXP @pattern)";
+            using var connection = CreateConnection();
+            await connection.OpenAsync();
+            var count = await connection.ExecuteScalarAsync<int>(sql,
+                new { excludeId = excludeId.ToString(), pattern });
+            return count > 0;
+        }
+
+        #endregion
+
+        #region Methods - Junction table public API
+
+        /// <summary>Đồng bộ danh sách đơn vị áp dụng cho 1 TPL — dùng cho PATCH /fields.</summary>
+        public async Task<int> UpdateOrganizationIDsAsync(Guid compositionId, List<Guid> organizationIds)
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync();
+            using var transaction = await connection.BeginTransactionAsync();
+
+            await SyncCompositionOrganizationsAsync(
+                compositionId, organizationIds, connection, transaction, removeExisting: true);
+
+            await transaction.CommitAsync();
+
+            return 1;
         }
 
         #endregion
@@ -168,40 +213,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
         #region Private helpers
 
-        /// <summary>
-        /// Build và chạy paging query có wrap subquery để JOIN ComponentType + 2 subquery org.
-        /// Tái sử dụng cho cả lọc nâng cao chung và lọc nâng cao của TPL.
-        /// </summary>
-        private async Task<(long Total, IEnumerable<SalaryCompositionEntity> Data)>
-            ExecutePagedSalaryQueryAsync(string whereSection, string orderBy,
-                int pageIndex, int pageSize, DynamicParameters parameters)
-        {
-            var safePageIndex = Math.Max(1, pageIndex);
-            var safePageSize  = Math.Max(1, pageSize);
-            parameters.Add("@_limit",  safePageSize);
-            parameters.Add("@_offset", (safePageIndex - 1) * safePageSize);
-
-            // Bước 1: lấy ID + cột page-of-rows từ bảng gốc (apply WHERE/ORDER/LIMIT trước cho hiệu năng)
-            // Bước 2: JOIN ComponentType và lấy 2 subquery org cho đúng các dòng trong trang
-            var dataSql = $@"
-                SELECT subq.*, ct.`name` AS component_type_name,
-                       {SalaryQueries.OrganizationIdsSubquery.Replace("sc.`salary_composition_id`", "subq.`salary_composition_id`")},
-                       {SalaryQueries.OrganizationNamesSubquery.Replace("sc.`salary_composition_id`", "subq.`salary_composition_id`")}
-                FROM (SELECT * FROM `{_tableName}` {whereSection} {orderBy} LIMIT @_limit OFFSET @_offset) subq
-                LEFT JOIN pa_salary_component_type ct ON subq.`component_type_id` = ct.`component_type_id`
-                {orderBy}";
-
-            var countSql = $"SELECT COUNT(*) FROM `{_tableName}` {whereSection}";
-
-            using var connection = CreateConnection();
-            await connection.OpenAsync();
-
-            var data  = await connection.QueryAsync<SalaryCompositionEntity>(dataSql, parameters);
-            var total = await connection.ExecuteScalarAsync<long>(countSql, parameters);
-            return (total, data.ToList());
-        }
-
-        /// <summary>
+/// <summary>
         /// Đồng bộ danh sách đơn vị áp dụng cho 1 TPL (dùng cùng connection + transaction).
         /// Khi <paramref name="removeExisting"/>=true thì xóa toàn bộ liên kết cũ trước.
         /// </summary>
@@ -234,6 +246,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 SalaryQueries.InsertSalaryCompositionOrganization, rows, transaction);
         }
 
+        /// <summary>Serialize list thành JSON string; trả null nếu list rỗng hoặc null.</summary>
         private static string? SerializeOrNull(List<string>? values)
             => values is { Count: > 0 } ? JsonSerializer.Serialize(values) : null;
 

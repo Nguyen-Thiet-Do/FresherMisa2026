@@ -5,6 +5,10 @@ using System.Text;
 
 namespace FresherMisa2026.Application.Interfaces
 {
+    /// <summary>
+    /// Interface repository dùng chung
+    /// Created By: ntdo (2026-04-07)
+    /// </summary>
     public interface IBaseRepository<TEntity>
     {
         /// <summary>
@@ -16,8 +20,8 @@ namespace FresherMisa2026.Application.Interfaces
         /// <param name="searchFields">Danh sách trường tìm kiếm</param>
         /// <param name="sort">Sắp xếp theo</param>
         /// <returns>Tổng số bản ghi và danh sách dữ liệu</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
-        Task<(long Total, 
+        /// Created By: ntdo (2026-04-07)
+        Task<(long Total,
             IEnumerable<TEntity> Data)> GetFilterPagingAsync(
             int pageSize, 
             int pageIndex, 
@@ -29,7 +33,7 @@ namespace FresherMisa2026.Application.Interfaces
         /// Lấy danh sách thực thể
         /// </summary>
         /// <returns>Danh sách tất cả bản ghi</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
+        /// Created By: ntdo (2026-04-07)
         Task<IEnumerable<BaseModel>> GetEntitiesAsync();
 
         /// <summary>
@@ -37,7 +41,7 @@ namespace FresherMisa2026.Application.Interfaces
         /// </summary>
         /// <param name="entityId">Id của bản ghi</param>
         /// <returns>Bản ghi tìm thấy hoặc null</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
+        /// Created By: ntdo (2026-04-07)
         Task<TEntity> GetEntityByIDAsync(Guid entityId);
 
         /// <summary>
@@ -45,7 +49,7 @@ namespace FresherMisa2026.Application.Interfaces
         /// </summary>
         /// <param name="entityId">Id của bản ghi</param>
         /// <returns>Số bản ghi bị xóa</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
+        /// Created By: ntdo (2026-04-08)
         Task<int> DeleteAsync(Guid entityId);
 
         /// <summary>
@@ -53,7 +57,7 @@ namespace FresherMisa2026.Application.Interfaces
         /// </summary>
         /// <param name="ids">Danh sách Id cần xóa</param>
         /// <returns>Số bản ghi bị xóa</returns>
-        /// CREATED BY: DVHAI (19/05/2026)
+        /// Created By: ntdo (2026-04-08)
         Task<int> DeleteManyAsync(List<Guid> ids);
 
         /// <summary>
@@ -61,7 +65,7 @@ namespace FresherMisa2026.Application.Interfaces
         /// </summary>
         /// <param name="entity">Thông tin bản ghi</param>
         /// <returns>Số bản ghi thêm mới</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
+        /// Created By: ntdo (2026-04-08)
         Task<int> InsertAsync(TEntity entity);
 
         /// <summary>
@@ -70,7 +74,7 @@ namespace FresherMisa2026.Application.Interfaces
         /// <param name="entityId">Id bản ghi</param>
         /// <param name="entity">Thông tin bản ghi</param>
         /// <returns>Số bản ghi bị ảnh hưởng</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
+        /// Created By: ntdo (2026-04-09)
         Task<int> UpdateAsync(Guid entityId, TEntity entity);
 
         /// <summary>
@@ -80,10 +84,20 @@ namespace FresherMisa2026.Application.Interfaces
         /// <param name="fieldName">Tên cột trong DB (đã validate qua reflection)</param>
         /// <param name="value">Giá trị mới</param>
         /// <returns>Số bản ghi bị ảnh hưởng</returns>
-        /// CREATED BY: NTDo (24/05/2026)
+        /// Created By: ntdo (2026-04-09)
         Task<int> PatchFieldAsync(Guid entityId, string fieldName, object? value);
 
         /// <summary>Cập nhật nhiều trường trong một câu UPDATE duy nhất.</summary>
+        /// Created By: ntdo (2026-04-09)
         Task<int> PatchFieldsAsync(Guid entityId, IReadOnlyDictionary<string, object?> fields);
+
+        /// <summary>
+        /// Kiểm tra các cột unique khai báo trong [ConfigTable] và trả về danh sách lỗi trùng.
+        /// Không throw — dùng để Service layer check sớm trước các validate khác.
+        /// </summary>
+        /// <param name="entity">Thực thể cần kiểm tra</param>
+        /// <param name="excludeId">Id của bản ghi đang cập nhật (bỏ qua chính nó khi Update)</param>
+        /// Created By: ntdo (2026-04-09)
+        Task<List<ValidationError>> GetUniqueViolationsAsync(TEntity entity, Guid? excludeId = null);
     }
 }

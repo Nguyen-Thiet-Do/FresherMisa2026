@@ -8,7 +8,7 @@ namespace FresherMisa2026.WebAPI.Controllers
 {
     /// <summary>
     /// Controller quản lý cấu hình lưới dữ liệu
-    /// Created By: Nguyen Thiet Do (2026-05-27)
+    /// Created By: ntdo (2026-06-12)
     /// </summary>
     [ApiController]
     public class GridConfigsController : BaseController<GridConfig>
@@ -34,7 +34,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Lấy toàn bộ config cột của 1 user cho 1 lưới
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-28)
+        /// Created By: ntdo (2026-06-12)
         [HttpGet("by-grid")]
         public async Task<ActionResult<ServiceResponse>> GetByGrid([FromQuery] string userID, [FromQuery] string gridCode)
         {
@@ -45,7 +45,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Ghi lại toàn bộ config cột cho 1 user + 1 lưới (xóa cũ, insert mới)
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-28)
+        /// Created By: ntdo (2026-06-12)
         [HttpPut("batch")]
         public async Task<ActionResult<ServiceResponse>> BatchUpsert([FromBody] GridConfigBatchRequest request)
         {
@@ -56,7 +56,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Reset cấu hình cột của user về mặc định hệ thống (dùng được cho cả TPL và TPL hệ thống)
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-29)
+        /// Created By: ntdo (2026-06-13)
         [HttpDelete("reset")]
         public async Task<ActionResult<ServiceResponse>> Reset([FromQuery] string userID, [FromQuery] string gridCode)
         {

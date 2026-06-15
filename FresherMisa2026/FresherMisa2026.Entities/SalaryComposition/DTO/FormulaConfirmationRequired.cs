@@ -1,3 +1,5 @@
+using FresherMisa2026.Entities.Enums;
+
 namespace FresherMisa2026.Entities.SalaryComposition.DTO
 {
     /// <summary>
@@ -10,7 +12,18 @@ namespace FresherMisa2026.Entities.SalaryComposition.DTO
     /// </summary>
     public class FormulaConfirmationRequired
     {
-        public bool RequiresConfirmation { get; set; } = true;
+        public ConfirmationType Type { get; set; } = ConfirmationType.UnfollowedComposition;
         public List<InactiveCodeInfo> InactiveCodes { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Payload trả về khi mã TPL mới trùng với TPL hệ thống chưa được kế thừa
+    /// </summary>
+    public class SystemCodeConflictConfirmation
+    {
+        public ConfirmationType Type { get; set; } = ConfirmationType.SystemCodeConflict;
+        public string Code { get; set; } = string.Empty;
+        public Guid SystemCompositionID { get; set; }
+        public string SystemCompositionName { get; set; } = string.Empty;
     }
 }

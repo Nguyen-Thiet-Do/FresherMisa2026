@@ -1,10 +1,6 @@
-namespace FresherMisa2026.Application.Services;
+using FresherMisa2026.Entities;
 
-/// <summary>
-/// Vị trí của một mã TPL không tồn tại trong công thức gốc (đã bao gồm prefix '=' nếu có)
-/// để FE highlight chính xác range trong input.
-/// </summary>
-public record MissingCodeInfo(string Code, int Position, int Length);
+namespace FresherMisa2026.Application.Services;
 
 /// <summary>
 /// Kết quả validate công thức:
@@ -26,18 +22,38 @@ public record FormulaValidationResult(
 /// Validator cú pháp công thức lương (ValueFormula / NormFormula).
 /// Hỗ trợ: SUM, IF, AND, OR, INT, TODAY và phép tính +, -, *, /.
 /// Phân biệt hoa thường với mã TPL.
-/// Created By: Nguyen Thiet Do (2026-05-27)
+/// Created By: ntdo (2026-06-08)
 /// </summary>
 public static class FormulaValidator
 {
-    /// <summary>
-    /// Danh sách hàm dựng sẵn được phép dùng trong công thức.
-    /// Code TPL bị cấm trùng tên hàm để tránh ambiguity giữa "call hàm" và "tham chiếu mã" khi parse/match.
-    /// </summary>
+    /// <summary>Danh sách hàm dựng sẵn được phép dùng trong công thức.</summary>
     public static readonly IReadOnlySet<string> AllowedFunctions =
         new HashSet<string>(StringComparer.Ordinal) { "SUM", "IF", "AND", "OR", "INT", "TODAY" };
 
     private static readonly HashSet<string> _allowedFunctions = (HashSet<string>)AllowedFunctions;
+
+    /// <summary>
+    /// Trích xuất tất cả mã TPL từ công thức 
+    /// bỏ qua tên hàm dựng sẵn và số. Dùng để pre-filter trước khi query DB.
+    /// Công thức lỗi cú pháp sẽ bị bỏ qua (validation xử lý riêng).
+    /// </summary>
+    /// Created By: ntdo (2026-06-08)
+    public static HashSet<string> ExtractIdentifiers(params string?[] formulas)
+    {
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var formula in formulas)
+        {
+            if (string.IsNullOrWhiteSpace(formula)) continue;
+            var input = formula.StartsWith('=') ? formula[1..].TrimStart() : formula;
+            List<Token> tokens;
+            try { tokens = Tokenize(input); }
+            catch (FormulaException) { continue; }
+            foreach (var token in tokens)
+                if (token.Kind == TokenKind.Ident && !_allowedFunctions.Contains(token.Value))
+                    result.Add(token.Value);
+        }
+        return result;
+    }
 
     /// <summary>
     /// Validate cú pháp công thức và tham chiếu mã TPL.
@@ -47,7 +63,7 @@ public static class FormulaValidator
     /// Trả về Empty nếu formula rỗng.
     /// Position trong MissingCodes là vị trí tuyệt đối trong chuỗi formula gốc (gồm cả '=').
     /// </summary>
-    /// Created By: Nguyen Thiet Do (2026-05-27)
+    /// Created By: ntdo (2026-06-08)
     public static FormulaValidationResult Validate(string? formula, HashSet<string> activeCodes, HashSet<string>? allCodes = null)
     {
         if (string.IsNullOrWhiteSpace(formula)) return FormulaValidationResult.Empty;
@@ -104,6 +120,7 @@ public static class FormulaValidator
 
     // ─── Tokenizer ─────────────────────────────────────────────────────────────
 
+    /// Created By: ntdo (2026-06-09)
     private static List<Token> Tokenize(string input)
     {
         var result = new List<Token>();
@@ -131,8 +148,29 @@ public static class FormulaValidator
                 || (input[i] == '-' && atValueStart && i + 1 < input.Length && char.IsDigit(input[i + 1])))
             {
                 int start = i;
-                if (input[i] == '-') i++;
+                bool hasLeadingMinus = input[i] == '-';
+                if (hasLeadingMinus) i++;
                 while (i < input.Length && char.IsDigit(input[i])) i++;
+
+                // Sau dãy chữ số: nếu là chữ cái hoặc '_' thì đây là mã TPL bắt đầu bằng số (ví dụ "12A5"),
+                // không phải số. Với leading '-': tách thành ArithOp '-' + Ident để unary minus của parser xử lý.
+                if (i < input.Length && (char.IsLetter(input[i]) || input[i] == '_'))
+                {
+                    if (hasLeadingMinus)
+                    {
+                        result.Add(new Token(TokenKind.ArithOp, "-", start));
+                        int identStart = start + 1;
+                        while (i < input.Length && (char.IsLetterOrDigit(input[i]) || input[i] == '_')) i++;
+                        result.Add(new Token(TokenKind.Ident, input[identStart..i], identStart));
+                    }
+                    else
+                    {
+                        while (i < input.Length && (char.IsLetterOrDigit(input[i]) || input[i] == '_')) i++;
+                        result.Add(new Token(TokenKind.Ident, input[start..i], start));
+                    }
+                    continue;
+                }
+
                 if (i < input.Length && input[i] == '.' && i + 1 < input.Length && char.IsDigit(input[i + 1]))
                 {
                     i++; // '.'
@@ -171,9 +209,9 @@ public static class FormulaValidator
         return result;
     }
 
-    // ─── Parser (recursive descent) ────────────────────────────────────────────
+    // ─── Parser (đệ quy xuống) ─────────────────────────────────────────────────
     //
-    // Grammar:
+    // Ngữ pháp:
     //   value_expr     = additive
     //   additive       = multiplicative (('+' | '-') multiplicative)*
     //   multiplicative = unary (('*' | '/') unary)*
@@ -203,8 +241,12 @@ public static class FormulaValidator
             _offset = offset;
         }
 
+        /// <summary>Trả về token hiện tại rồi tiến con trỏ sang token tiếp theo.</summary>
+        /// Created By: ntdo (2026-06-09)
         private Token Consume() => _tokens[_pos++];
 
+        /// <summary>Kiểm tra token hiện tại đúng loại <paramref name="kind"/>; nếu đúng thì tiêu thụ, sai thì throw lỗi cú pháp.</summary>
+        /// Created By: ntdo (2026-06-09)
         private void Expect(TokenKind kind, string errorHint)
         {
             if (Current.Kind != kind)
@@ -215,8 +257,11 @@ public static class FormulaValidator
             Consume();
         }
 
+        /// <summary>Điểm vào của parser — parse toàn bộ biểu thức giá trị.</summary>
         public void ParseValueExpr() => ParseAdditive();
 
+        /// <summary>Parse phép cộng/trừ — độ ưu tiên thấp nhất trong biểu thức số học.</summary>
+        /// Created By: ntdo (2026-06-10)
         private void ParseAdditive()
         {
             ParseMultiplicative();
@@ -227,6 +272,8 @@ public static class FormulaValidator
             }
         }
 
+        /// <summary>Parse phép nhân/chia — độ ưu tiên cao hơn cộng/trừ.</summary>
+        /// Created By: ntdo (2026-06-10)
         private void ParseMultiplicative()
         {
             ParseUnary();
@@ -237,9 +284,11 @@ public static class FormulaValidator
             }
         }
 
+        /// <summary>Parse toán tử một ngôi — hiện tại chỉ hỗ trợ dấu âm (ví dụ: -SUM(A,B), -LUONG_CO_BAN).</summary>
+        /// Created By: ntdo (2026-06-10)
         private void ParseUnary()
         {
-            // Unary minus: -SUM(A,B), -LUONG_CO_BAN, ...
+            // Dấu âm một ngôi: -SUM(A,B), -LUONG_CO_BAN, ...
             if (Current.Kind == TokenKind.ArithOp && Current.Value == "-")
             {
                 Consume();
@@ -249,16 +298,18 @@ public static class FormulaValidator
             ParsePrimary();
         }
 
+        /// <summary>Parse đơn vị cơ bản: số, biểu thức trong ngoặc, mã TPL, hoặc lời gọi hàm.</summary>
+        /// Created By: ntdo (2026-06-10)
         private void ParsePrimary()
         {
-            // Number literal (including negative literals tokenized as one token)
+            // Số (bao gồm số âm đã được tokenizer gộp thành một token)
             if (Current.Kind == TokenKind.Number)
             {
                 Consume();
                 return;
             }
 
-            // Parenthesized sub-expression for grouping: (A + B) * C
+            // Biểu thức nhóm trong ngoặc: (A + B) * C
             if (Current.Kind == TokenKind.LParen)
             {
                 Consume();
@@ -299,6 +350,7 @@ public static class FormulaValidator
         /// Hàm trong ngữ cảnh giá trị: SUM, IF, INT, TODAY.
         /// AND/OR chỉ được dùng trong điều kiện của IF.
         /// </summary>
+        /// Created By: ntdo (2026-06-11)
         private void ParseFunctionAsValue(string name)
         {
             if (!_allowedFunctions.Contains(name))
@@ -320,7 +372,7 @@ public static class FormulaValidator
                     break;
 
                 case "IF":
-                    // IF(logical_test, value_if_true, value_if_false)
+                    // IF(điều_kiện, giá_trị_nếu_đúng, giá_trị_nếu_sai)
                     ParseCondExpr();
                     Expect(TokenKind.Comma, "IF: mong đợi ',' sau điều kiện");
                     ParseValueExpr();
@@ -329,7 +381,7 @@ public static class FormulaValidator
                     break;
 
                 case "INT":
-                    // INT(number)
+                    // INT(số) — làm tròn xuống số nguyên
                     ParseValueExpr();
                     break;
 
@@ -341,9 +393,8 @@ public static class FormulaValidator
             Expect(TokenKind.RParen, $"Mong đợi ')' để đóng '{name}'");
         }
 
-        /// <summary>
-        /// cond_expr = AND/OR(...) | value_expr CmpOp value_expr
-        /// </summary>
+        /// <summary>Parse biểu thức điều kiện: AND/OR(...) hoặc so sánh hai giá trị (value CmpOp value).</summary>
+        /// Created By: ntdo (2026-06-11)
         private void ParseCondExpr()
         {
             if (Current.Kind == TokenKind.Ident && Current.Value is "AND" or "OR")
@@ -362,7 +413,7 @@ public static class FormulaValidator
                 return;
             }
 
-            // comparison: value CmpOp value — ví dụ: A + B > 1000, TODAY() >= NGAY_SINH
+            // So sánh hai giá trị — ví dụ: A + B > 1000, TODAY() >= NGAY_SINH
             ParseValueExpr();
             if (Current.Kind != TokenKind.CmpOp)
                 throw new FormulaException(

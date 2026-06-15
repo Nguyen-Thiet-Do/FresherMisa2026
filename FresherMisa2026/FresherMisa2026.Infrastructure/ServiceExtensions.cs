@@ -5,6 +5,7 @@ using FresherMisa2026.Application.Interfaces.Services;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Extensions;
 using FresherMisa2026.Infrastructure.Repositories;
+using FresherMisa2026.Infrastructure.Repositories.AuditLog;
 using FresherMisa2026.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -40,10 +41,9 @@ namespace FresherMisa2026.Infrastructure
             services.AddScoped<ISalaryCompositionSystemRepository, SalaryCompositionSystemRepository>();
             services.AddScoped<IGridConfigRepository, GridConfigRepository>();
 
+            services.AddScoped<IAuditLogRepository, AuditLogRepository>();
             services.AddScoped<IFileService, FileService>();
 
-            // đăng ký cache
-            services.AddMemoryCache();
             return services;
         }
 

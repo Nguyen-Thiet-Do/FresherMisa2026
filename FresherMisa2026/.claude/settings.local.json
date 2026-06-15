@@ -70,7 +70,11 @@
       "Bash(Remove-Item \"D:\\\\FresherMisa2026\\\\FresherMisa2026\\\\FresherMisa2026.Entities\\\\Settings\\\\CacheSettings.cs\" -Force)",
       "Bash(Remove-Item \"D:\\\\FresherMisa2026\\\\FresherMisa2026\\\\FresherMisa2026.Entities\\\\Settings\\\\PagingSettings.cs\" -Force)",
       "Bash(Start-Sleep -Seconds 5)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d['data'][0]['salaryComponentTypeID'] if d.get\\('data'\\) else 'no data'\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d['data'][0]['salaryComponentTypeID'] if d.get\\('data'\\) else 'no data'\\)\")",
+      "Bash(Remove-Item \"C:\\\\Users\\\\DONPR\\\\.claude\\\\projects\\\\D--FresherMisa2026\\\\memory\\\\project_salary_module_progress.md\" -Force)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\DONPR\\\\.claude\\\\projects\\\\D--FresherMisa2026\\\\memory\\\\project_bulk_delete_partial_result.md\" -Force)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\DONPR\\\\.claude\\\\projects\\\\D--FresherMisa2026\\\\memory\\\\project_excel_import_export.md\" -Force)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\DONPR\\\\.claude\\\\projects\\\\D--FresherMisa2026\\\\memory\\\\project_tpl_dependency_table.md\" -Force)"
     ]
   }
 }

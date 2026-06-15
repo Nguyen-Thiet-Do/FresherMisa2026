@@ -23,7 +23,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Lấy department theo code
         /// </summary>
         /// <returns></returns>
-        /// Created By: dvhai (10/04/2026)
+        /// Created By: ntdo (2026-04-17)
         [HttpGet("code/{code}")]
         public async Task<ActionResult<ServiceResponse>> GetByCode(string code)
         {
@@ -44,7 +44,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// lấy nhân viên theo mã phòng ban
         /// </summary>
         /// <returns></returns>
-        /// Created By: ntdo (17/04/2026)
+        /// Created By: ntdo (2026-04-17)
         [HttpGet("{code}/employees")]
         public async Task<ActionResult<ServiceResponse>> GetEmployeesByDepartmentCode(string code)
         {
@@ -64,7 +64,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// lấy số lượng nhân viên theo từng phòng ban
         /// </summary>  
         /// <returns></returns>
-        /// Created By: ntdo (17/04/2026) 
+        /// Created By: ntdo (2026-04-17) 
         [HttpGet("{code}/employee-count")]
         public async Task<ActionResult<ServiceResponse>> GetEmployeeCountByDepartmentCode(string code)
         {

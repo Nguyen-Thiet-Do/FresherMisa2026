@@ -4,7 +4,6 @@ using FresherMisa2026.Application.Interfaces.Repositories;
 using FresherMisa2026.Entities;
 using FresherMisa2026.Entities.Employee;
 using FresherMisa2026.Entities.Employee.DTO;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
@@ -14,7 +13,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
 {
     public class EmployeeRepository : BaseRepository<Employee>, IEmployeeRepository
     {
-        public EmployeeRepository(IConfiguration configuration, IMemoryCache cache, ILogger<BaseRepository<Employee>> logger) : base(configuration, cache, logger)
+        public EmployeeRepository(IConfiguration configuration, ILogger<BaseRepository<Employee>> logger) : base(configuration, logger)
         {
         }
 

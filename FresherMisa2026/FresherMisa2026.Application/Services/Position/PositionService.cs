@@ -17,8 +17,9 @@ namespace FresherMisa2026.Application.Services
         public PositionService(
             IBaseRepository<Position> baseRepository,
             IPositionRepository positionRepository,
-            IEmployeeRepository employeeRepository
-            ) : base(baseRepository)
+            IEmployeeRepository employeeRepository,
+            IAuditLogRepository auditLogRepository
+            ) : base(baseRepository, auditLogRepository)
         {
             _positionRepository = positionRepository;
             _employeeRepository = employeeRepository;
@@ -57,13 +58,13 @@ namespace FresherMisa2026.Application.Services
             };
         }
 
-        protected override async Task<bool> ValidateBeforeDeleteAsync(Guid entityId)
+        protected override async Task<bool> ValidateBeforeDeleteAsync(Guid entityId, Position existingEntity)
         {
             var employees = await _employeeRepository.GetEmployeesByPositionId(entityId);
             return !employees.Any();
         }
 
-        protected override Task<string?> GetDeleteValidationMessageAsync(Guid entityId)
+        protected override Task<string?> GetDeleteValidationMessageAsync(Guid entityId, Position existingEntity)
         {
             return Task.FromResult<string?>("Không thể xóa chức vụ vì đang có nhân viên thuộc chức vụ này");
         }
@@ -80,7 +81,7 @@ namespace FresherMisa2026.Application.Services
             return errors;
         }
 
-        protected override async Task<List<ValidationError>> ValidateBeforeUpdateAsync(Guid entityId, Position position)
+        protected override async Task<List<ValidationError>> ValidateBeforeUpdateAsync(Guid entityId, Position position, Position existingEntity)
         {
             var errors = new List<ValidationError>();
             var duplicateError = await ValidateDuplicateCodeAsync(position.PositionCode, entityId);
@@ -109,6 +110,7 @@ namespace FresherMisa2026.Application.Services
             return errors;
         }
 
+        /// Created By: ntdo (2026-04-22)
         private async Task<ValidationError?> ValidateDuplicateCodeAsync(string? positionCode, Guid? currentPositionId)
         {
             if (string.IsNullOrWhiteSpace(positionCode))

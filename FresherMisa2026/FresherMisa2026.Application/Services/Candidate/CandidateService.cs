@@ -9,6 +9,10 @@ using System.Text.RegularExpressions;
 
 namespace FresherMisa2026.Application.Services
 {
+    /// <summary>
+    /// Service cho Candidate
+    /// Created By: ntdo (2026-04-24)
+    /// </summary>
     public class CandidateService : BaseService<Candidate>, ICandidateService
     {
         private readonly ICandidateRepository _candidateRepository;
@@ -18,22 +22,29 @@ namespace FresherMisa2026.Application.Services
         public CandidateService(
             IBaseRepository<Candidate> baseRepository,
             ICandidateRepository candidateRepository,
-            IFileService fileService) : base(baseRepository)
+            IFileService fileService,
+            IAuditLogRepository auditLogRepository) : base(baseRepository, auditLogRepository)
         {
             _candidateRepository = candidateRepository;
             _fileService = fileService;
         }
 
+        /// <summary>Validate trước khi thêm ứng viên</summary>
+        /// Created By: ntdo (2026-04-24)
         protected override async Task<List<ValidationError>> ValidateBeforeInsertAsync(Candidate candidate)
         {
             return await ValidateDuplicateAsync(candidate, null);
         }
 
-        protected override async Task<List<ValidationError>> ValidateBeforeUpdateAsync(Guid entityId, Candidate candidate)
+        /// <summary>Validate trước khi cập nhật ứng viên</summary>
+        /// Created By: ntdo (2026-04-24)
+        protected override async Task<List<ValidationError>> ValidateBeforeUpdateAsync(Guid entityId, Candidate candidate, Candidate existingEntity)
         {
             return await ValidateDuplicateAsync(candidate, entityId);
         }
 
+        /// <summary>Kiểm tra trùng số điện thoại và email ứng viên</summary>
+        /// Created By: ntdo (2026-04-25)
         private async Task<List<ValidationError>> ValidateDuplicateAsync(Candidate candidate, Guid? currentId)
         {
             var errors = new List<ValidationError>();
@@ -55,6 +66,8 @@ namespace FresherMisa2026.Application.Services
             return errors;
         }
 
+        /// <summary>Validate tùy chỉnh cho Candidate</summary>
+        /// Created By: ntdo (2026-04-25)
         protected override List<ValidationError> ValidateCustom(Candidate candidate)
         {
             var errors = new List<ValidationError>();
@@ -74,6 +87,8 @@ namespace FresherMisa2026.Application.Services
             return errors;
         }
 
+        /// <summary>Lọc ứng viên có phân trang</summary>
+        /// Created By: ntdo (2026-04-26)
         public async Task<ServiceResponse> FilterCandidatesPagingAsync(CandidateFilterRequest request)
         {
             var validationError = ValidateFilterRequest(request);
@@ -93,12 +108,16 @@ namespace FresherMisa2026.Application.Services
             });
         }
 
+        /// <summary>Sau khi xóa ứng viên: xóa file CV và avatar</summary>
+        /// Created By: ntdo (2026-04-27)
         protected override void AfterDelete(Candidate candidate)
         {
             _fileService.DeleteFile(candidate.CVFile);
             _fileService.DeleteFile(candidate.Avatar);
         }
 
+        /// <summary>Validate các tham số filter ứng viên</summary>
+        /// Created By: ntdo (2026-04-26)
         private ServiceResponse? ValidateFilterRequest(CandidateFilterRequest request)
         {
             if (request.HiringDateFrom.HasValue && request.HiringDateTo.HasValue && request.HiringDateFrom > request.HiringDateTo)

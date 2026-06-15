@@ -4,6 +4,10 @@ using Microsoft.Extensions.Options;
 
 namespace FresherMisa2026.Infrastructure.Services
 {
+    /// <summary>
+    /// Service xử lý upload/xóa file trên server
+    /// Created By: ntdo (2026-04-28)
+    /// </summary>
     public class FileService : IFileService
     {
         #region Declare
@@ -21,7 +25,7 @@ namespace FresherMisa2026.Infrastructure.Services
         /// <summary>
         /// Lưu file lên server, trả về URL tương đối có thể truy cập qua HTTP
         /// </summary>
-        /// Created By: Nguyen Thiet Do (09/05/2026)
+        /// Created By: ntdo (2026-04-28)
         public async Task<string> SaveFileAsync(FileUploadRequest request, string subFolder)
         {
             ValidateFile(request);
@@ -42,7 +46,7 @@ namespace FresherMisa2026.Infrastructure.Services
         /// <summary>
         /// Xóa file khỏi server theo URL tương đối
         /// </summary>
-        /// Created By: Nguyen Thiet Do (09/05/2026)
+        /// Created By: ntdo (2026-04-28)
         public void DeleteFile(string? relativeUrl)
         {
             if (string.IsNullOrEmpty(relativeUrl)) return;
@@ -54,6 +58,8 @@ namespace FresherMisa2026.Infrastructure.Services
                 File.Delete(fullPath);
         }
 
+        /// <summary>Validate file trước khi lưu</summary>
+        /// Created By: ntdo (2026-04-28)
         private void ValidateFile(FileUploadRequest request)
         {
             if (request.FileSize == 0)

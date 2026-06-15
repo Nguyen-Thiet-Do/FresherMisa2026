@@ -6,14 +6,12 @@ using FresherMisa2026.Entities.Department;
 using FresherMisa2026.Entities.Exceptions;
 using FresherMisa2026.Entities.Extensions;
 using ExtNaming = FresherMisa2026.Entities.Extensions.Naming;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MySqlConnector;
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -25,9 +23,14 @@ namespace FresherMisa2026.Infrastructure.Repositories
     /// Base repository
     /// </summary>
     /// <typeparam name="TEntity"></typeparam>
-    /// Created By: dvhai (09/04/2026)
+    /// Created By: ntdo (2026-04-09)
     public class BaseRepository<TEntity> : IBaseRepository<TEntity> where TEntity : BaseModel
     {
+        /// <summary>
+        /// Chuyển MySqlException sang domain exception tương ứng để middleware xử lý HTTP status code đúng.
+        /// 1062 → DuplicateEntityException (409), 1451 → InvalidOperationException (400),
+        /// 1452 → ArgumentException (400), SQLSTATE 45000 → KeyNotFoundException / InvalidOperationException.
+        /// </summary>
         private Exception TranslateMySqlException(MySqlException ex)
         {
             if (ex.Number == 1062)
@@ -70,16 +73,13 @@ namespace FresherMisa2026.Infrastructure.Repositories
         protected string _deletedColumn;// tên cột "đã xóa mềm" trong DB
         protected bool _useSnakeCase;
         public Type _modelType = null;
-        private const int CacheExpirationMinutes = 5;
 
-        protected IMemoryCache _cache;
         protected ILogger<BaseRepository<TEntity>> _logger;
 
         //Constructor
-        public BaseRepository(IConfiguration configuration, IMemoryCache cache, ILogger<BaseRepository<TEntity>> logger)
+        public BaseRepository(IConfiguration configuration, ILogger<BaseRepository<TEntity>> logger)
         {
             _configuration = configuration;
-            _cache = cache;
             _logger = logger;
             _connectionString = _configuration.GetConnectionString("DefaultConnection")!;
             _modelType = typeof(TEntity);
@@ -95,6 +95,8 @@ namespace FresherMisa2026.Infrastructure.Repositories
         private string SpUpdate => _useSnakeCase ? $"proc_{_tableName}_update"             : $"Proc_Update{_tableName}";
         private string SpDeleteById => _useSnakeCase ? $"proc_{_tableName}_delete_by_id"   : $"Proc_Delete{_tableName}ById";
         private string SpFilterPaging => _useSnakeCase ? $"proc_{_tableName}_filter_paging" : $"Proc_{_tableName}_FilterPaging";
+        /// <summary>Tạo MySqlConnection mới theo connection string hiện tại (DefaultConnection hoặc override trong subclass).</summary>
+        /// Created By: ntdo (2026-04-09)
         protected MySqlConnection CreateConnection()
         {
             return new MySqlConnection(_connectionString);
@@ -104,36 +106,20 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
         #region Method Get
         /// <summary>
-        /// Lấy danh sách entity từ cache nếu có, nếu không có thì lấy từ database và lưu vào cache trong 5 phút
+        /// Lấy tất cả bản ghi từ database
         /// </summary>
         /// <returns>Danh sách tất cả bản ghi</returns>
-        /// Created By: dvhai (09/04/2026)
+        /// Created By: ntdo (2026-04-09)
         public async Task<IEnumerable<BaseModel>> GetEntitiesAsync()
         {
-            var cacheKey = $"{_tableName}_all";
-            if (_cache.TryGetValue(cacheKey, out IEnumerable<TEntity> cached))
-            {
-                _logger.LogInformation("[CACHE TRÚNG] GetEntitiesAsync - Bảng: {Table} | Khóa: {Key} | Trả về {Count} bản ghi từ cache (bỏ qua truy vấn DB)",
-                    _tableName, cacheKey, cached.Count());
-                return cached;
-            }
-
-            _logger.LogInformation("[CACHE TRƯỢT] GetEntitiesAsync - Bảng: {Table} | Khóa: {Key} | Đang truy vấn cơ sở dữ liệu...", _tableName, cacheKey);
-            var sw = Stopwatch.StartNew();
-            var result = await GetEntitiesUsingCommandTextAsync();
-            sw.Stop();
-
-            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(CacheExpirationMinutes));
-            _logger.LogInformation("[TRUY VẤN DB] GetEntitiesAsync - Bảng: {Table} | Lấy được {Count} bản ghi trong {ElapsedMs}ms | Đã lưu cache {ExpirationMinutes} phút",
-                _tableName, result.Count(), sw.ElapsedMilliseconds, CacheExpirationMinutes);
-            return result;
+            return await GetEntitiesUsingCommandTextAsync();
         }
 
         /// <summary>
         /// Lấy tất cả theo command text
         /// </summary>
         /// <returns></returns>
-        /// CREATED BY: DVHAI (11/07/2021)
+        /// Created By: ntdo (2026-04-09)
         protected virtual async Task<IEnumerable<TEntity>> GetEntitiesUsingCommandTextAsync()
         {
             var query = new StringBuilder($"select * from `{_tableName}`");
@@ -153,48 +139,14 @@ namespace FresherMisa2026.Infrastructure.Repositories
         }
 
         /// <summary>
-        /// Lấy bản ghi theo id từ cache nếu có, nếu không có thì lấy từ database và lưu vào cache trong 5 phút
+        /// Lấy bản ghi theo id từ database
         /// </summary>
         /// <param name="entityId">Id của bản ghi</param>
         /// <returns>Bản ghi tìm thấy hoặc null</returns>
-        /// CREATED BY: DVHAI (07/07/2021)
+        /// Created By: ntdo (2026-04-09)
         public async Task<TEntity> GetEntityByIDAsync(Guid entityId)
         {
-            var cacheKey = $"{_tableName}_{entityId}";
-
-            // 1. Tìm trong cache riêng lẻ theo ID
-            if (_cache.TryGetValue(cacheKey, out TEntity cached))
-            {
-                _logger.LogInformation("[CACHE TRÚNG] GetEntityByIDAsync - Bảng: {Table} | ID: {Id} | Trả về từ cache ID (bỏ qua truy vấn DB)",
-                    _tableName, entityId);
-                return cached;
-            }
-
-            // 2. Tìm trong cache danh sách toàn bộ nếu có
-            var allCacheKey = $"{_tableName}_all";
-            if (_cache.TryGetValue(allCacheKey, out IEnumerable<TEntity> allCached))
-            {
-                var keyProp = typeof(TEntity).GetProperty(_keyName);
-                var found = allCached.FirstOrDefault(e => keyProp?.GetValue(e) is Guid id && id == entityId);
-                if (found != null)
-                {
-                    _cache.Set(cacheKey, found, TimeSpan.FromMinutes(CacheExpirationMinutes));
-                    _logger.LogInformation("[CACHE TRÚNG - DANH SÁCH] GetEntityByIDAsync - Bảng: {Table} | ID: {Id} | Tìm thấy trong cache danh sách, không cần query DB",
-                        _tableName, entityId);
-                    return found;
-                }
-            }
-
-            // 3. Không có trong cache → query DB
-            _logger.LogInformation("[CACHE TRƯỢT] GetEntityByIDAsync - Bảng: {Table} | ID: {Id} | Không có trong cache, đang truy vấn cơ sở dữ liệu...", _tableName, entityId);
-            var sw = Stopwatch.StartNew();
-            var result = await GetEntitieByIdUsingCommandTextAsync(entityId.ToString());
-            sw.Stop();
-
-            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(CacheExpirationMinutes));
-            _logger.LogInformation("[TRUY VẤN DB] GetEntityByIDAsync - Bảng: {Table} | ID: {Id} | Lấy dữ liệu trong {ElapsedMs}ms | Đã lưu cache {ExpirationMinutes} phút",
-                _tableName, entityId, sw.ElapsedMilliseconds, CacheExpirationMinutes);
-            return result;
+            return await GetEntitieByIdUsingCommandTextAsync(entityId.ToString());
         }
 
         /// <summary>
@@ -234,7 +186,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// </summary>
         /// <param name="entityId">Id của bản ghi</param>
         /// <returns>Số bản ghi bị xóa</returns>
-        /// CREATED BY: DVHAI (11/07/2021)
+        /// Created By: ntdo (2026-04-09)
         public async Task<int> DeleteAsync(Guid entityId)
         {
             var rowAffects = 0;
@@ -252,10 +204,6 @@ namespace FresherMisa2026.Infrastructure.Repositories
                     rowAffects = await connection.ExecuteAsync(SpDeleteById, param: dynamicParams, transaction: transaction, commandType: CommandType.StoredProcedure);
 
                     transaction.Commit();
-                    _cache.Remove($"{_tableName}_all");
-                    _cache.Remove($"{_tableName}_{entityId}");
-                    _logger.LogInformation("[XÓA CACHE] DeleteAsync - Bảng: {Table} | ID: {Id} | Đã xóa cache: {Key1}, {Key2}",
-                        _tableName, entityId, $"{_tableName}_all", $"{_tableName}_{entityId}");
                 }
                 catch (MySqlException ex)
                 {
@@ -279,7 +227,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// </summary>
         /// <param name="ids">Danh sách Id cần xóa</param>
         /// <returns>Số bản ghi bị xóa</returns>
-        /// CREATED BY: DVHAI (19/05/2026)
+        /// Created By: ntdo (2026-04-09)
         public async Task<int> DeleteManyAsync(List<Guid> ids)
         {
             var totalRowAffects = 0;
@@ -301,11 +249,6 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 }
 
                 transaction.Commit();
-                _cache.Remove($"{_tableName}_all");
-                foreach (var id in ids)
-                    _cache.Remove($"{_tableName}_{id}");
-
-                _logger.LogInformation("[XÓA CACHE] DeleteManyAsync - Bảng: {Table} | Đã xóa {Count} bản ghi", _tableName, ids.Count);
             }
             catch (MySqlException ex)
             {
@@ -326,20 +269,18 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// </summary>
         /// <param name="entity">Thông tin bản ghi</param>
         /// <returns>Số bản ghi thêm mới</returns>
-        /// CREATED BY: DVHAI (11/07/2021)
+        /// Created By: ntdo (2026-04-09)
         public async Task<int> InsertAsync(TEntity entity)
         {
-            await ValidateUniqueColumnsAsync(entity);
+            EnsurePrimaryKeyForInsert(entity);
             var rowAffects = 0;
             using var connection = CreateConnection();
             await connection.OpenAsync();
-            
+
             using (var transaction = connection.BeginTransaction())
             {
                 try
                 {
-                    EnsurePrimaryKeyForInsert(entity);
-
                     //1.Duyệt các thuộc tính trên bản ghi và tạo parameters
                     var parameters = MappingDbType(entity);
 
@@ -348,9 +289,6 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
                     await OnAfterInsertInTransactionAsync(entity, connection, transaction);
                     transaction.Commit();
-                    _cache.Remove($"{_tableName}_all");
-                    _logger.LogInformation("[XÓA CACHE] InsertAsync - Bảng: {Table} | Đã xóa cache: {Key}",
-                        _tableName, $"{_tableName}_all");
                 }
                 catch (MySqlException ex)
                 {
@@ -374,14 +312,13 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// <param name="entityId">Id bản ghi</param>
         /// <param name="entity">Thông tin bản ghi</param>
         /// <returns>Số bản ghi bị ảnh hưởng</returns>
-        /// CREATED BY: DVHAI (11/07/2021)
+        /// Created By: ntdo (2026-04-09)
         public async Task<int> UpdateAsync(Guid entityId, TEntity entity)
         {
-            await ValidateUniqueColumnsAsync(entity, entityId);
             var rowAffects = 0;
             using var connection = CreateConnection();
             await connection.OpenAsync();
-            
+
             using (var transaction = connection.BeginTransaction())
             {
                 try
@@ -397,10 +334,6 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
                     await OnAfterUpdateInTransactionAsync(entity, entityId, connection, transaction);
                     transaction.Commit();
-                    _cache.Remove($"{_tableName}_all");
-                    _cache.Remove($"{_tableName}_{entityId}");
-                    _logger.LogInformation("[XÓA CACHE] UpdateAsync - Bảng: {Table} | ID: {Id} | Đã xóa cache: {Key1}, {Key2}",
-                        _tableName, entityId, $"{_tableName}_all", $"{_tableName}_{entityId}");
                 }
                 catch (MySqlException ex)
                 {
@@ -426,7 +359,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// <param name="searchFields">Danh sách trường tìm kiếm</param>
         /// <param name="sort">Sắp xếp theo</param>
         /// <returns>Tổng số bản ghi và danh sách dữ liệu</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
+        /// Created By: ntdo (2026-04-09)
         public async Task<(long Total,
             IEnumerable<TEntity> Data)> GetFilterPagingAsync(
             int pageSize,
@@ -458,6 +391,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
             return (total, data);
         }
 
+        /// <summary>Auto-generate Guid PK nếu client không truyền (Guid.Empty hoặc null).</summary>
         private void EnsurePrimaryKeyForInsert(TEntity entity)
         {
             var keyProperty = entity.GetType().GetProperty(_keyName);
@@ -485,6 +419,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
             }
         }
 
+        /// <summary>Gán entityId vào property PK của entity trước khi gọi Update SP — đảm bảo SP nhận đúng ID cần cập nhật.</summary>
         private void SetPrimaryKeyValue(TEntity entity, Guid entityId)
         {
             var keyProperty = entity.GetType().GetProperty(_keyName);
@@ -572,7 +507,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// <param name="fieldName">Tên cột trong DB (prop.Name từ reflection)</param>
         /// <param name="value">Giá trị mới đã được convert đúng kiểu</param>
         /// <returns>Số bản ghi bị ảnh hưởng</returns>
-        /// CREATED BY: NTDo (24/05/2026)
+        /// Created By: ntdo (2026-04-09)
         public async Task<int> PatchFieldsAsync(Guid entityId, IReadOnlyDictionary<string, object?> fields)
         {
             var setClauses = new List<string>(fields.Count);
@@ -606,15 +541,12 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 throw TranslateMySqlException(ex);
             }
 
-            if (rows > 0)
-            {
-                _cache.Remove($"{_tableName}_all");
-                _cache.Remove($"{_tableName}_{entityId}");
-            }
-
             return rows;
         }
 
+        /// <summary>
+        /// Inline UPDATE một cột duy nhất — fieldName đã được validate upstream bởi tầng Service (reflection + whitelist).
+        /// </summary>
         public async Task<int> PatchFieldAsync(Guid entityId, string fieldName, object? value)
         {
             // fieldName từ Service luôn là C# property name → convert sang DB column name nếu opt-in
@@ -639,21 +571,18 @@ namespace FresherMisa2026.Infrastructure.Repositories
                 throw TranslateMySqlException(ex);
             }
 
-            if (rows > 0)
-            {
-                _cache.Remove($"{_tableName}_all");
-                _cache.Remove($"{_tableName}_{entityId}");
-                _logger.LogInformation("[XÓA CACHE] PatchFieldAsync - Bảng: {Table} | ID: {Id} | Trường: {Field}",
-                    _tableName, entityId, fieldName);
-            }
-
             return rows;
         }
 
-        private async Task ValidateUniqueColumnsAsync(TEntity entity, Guid? excludeId = null)
+        /// <summary>
+        /// Kiểm tra các cột unique và trả về danh sách lỗi — không throw.
+        /// Dùng cho Service layer để check sớm (trước [IRequired] và ValidateCustom).
+        /// </summary>
+        public async Task<List<ValidationError>> GetUniqueViolationsAsync(TEntity entity, Guid? excludeId = null)
         {
+            var errors = new List<ValidationError>();
             var uniqueColumnsRaw = _modelType.GetUniqueColumns();
-            if (string.IsNullOrWhiteSpace(uniqueColumnsRaw)) return;
+            if (string.IsNullOrWhiteSpace(uniqueColumnsRaw)) return errors;
 
             var uniqueColumns = uniqueColumnsRaw
                 .Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -665,7 +594,6 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
             foreach (var column in uniqueColumns)
             {
-                // UniqueColumns trong [ConfigTable] là property name (PascalCase). DB column = snake_case nếu opt-in.
                 var prop = _modelType.GetProperty(column);
                 if (prop == null) continue;
 
@@ -674,15 +602,32 @@ namespace FresherMisa2026.Infrastructure.Repositories
 
                 var dbColumn = _modelType.GetColumnName(column);
                 var sql = excludeId.HasValue
-                    ? $"SELECT COUNT(*) FROM `{_tableName}` WHERE `{dbColumn}` = @value AND `{_keyColumn}` != @excludeId"
-                    : $"SELECT COUNT(*) FROM `{_tableName}` WHERE `{dbColumn}` = @value";
+                    ? $"SELECT COUNT(1) FROM `{_tableName}` WHERE `{dbColumn}` = @value AND `{_keyColumn}` != @excludeId"
+                    : $"SELECT COUNT(1) FROM `{_tableName}` WHERE `{dbColumn}` = @value";
 
                 var count = await connection.ExecuteScalarAsync<int>(sql, new { value, excludeId = excludeId?.ToString() });
                 if (count > 0)
                 {
                     var displayName = _modelType.GetColumnDisplayName(column);
-                    throw new DuplicateEntityException($"{displayName} '{value}' đã tồn tại", column);
+                    errors.Add(new ValidationError(column, $"{displayName} '{value}' đã tồn tại"));
                 }
+            }
+
+            return errors;
+        }
+
+        /// <summary>
+        /// Pre-check unique columns trước khi mở transaction — safety net cho race condition.
+        /// Service layer đã check trước bằng GetUniqueViolationsAsync; method này bắt trường hợp
+        /// hai request trùng nhau chạy đồng thời vượt qua check đó.
+        /// </summary>
+        private async Task ValidateUniqueColumnsAsync(TEntity entity, Guid? excludeId = null)
+        {
+            var violations = await GetUniqueViolationsAsync(entity, excludeId);
+            if (violations.Count > 0)
+            {
+                var first = violations[0];
+                throw new DuplicateEntityException(first.Message, first.Field);
             }
         }
 

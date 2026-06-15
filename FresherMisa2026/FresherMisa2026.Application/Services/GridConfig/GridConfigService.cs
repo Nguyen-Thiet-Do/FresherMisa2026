@@ -12,7 +12,7 @@ namespace FresherMisa2026.Application.Services
     /// <summary>
     /// Service cho cấu hình lưới của người dùng (pa_grid_config).
     /// </summary>
-    /// <remarks>Created by: ntdo — 27/05/2026 · Refactor: 03/06/2026</remarks>
+    /// <remarks>Created By: ntdo (2026-06-07) · Refactor: 2026-06-03</remarks>
     public class GridConfigService : BaseService<GridConfig>, IGridConfigService
     {
         #region Declare
@@ -26,8 +26,9 @@ namespace FresherMisa2026.Application.Services
 
         public GridConfigService(
             IGridConfigRepository repository,
-            ILogger<GridConfigService> logger)
-            : base(repository)
+            ILogger<GridConfigService> logger,
+            IAuditLogRepository auditLogRepository)
+            : base(repository, auditLogRepository)
         {
             _gridConfigRepository = repository;
             _logger = logger;
@@ -38,7 +39,7 @@ namespace FresherMisa2026.Application.Services
         #region Methods
 
         /// <summary>Lấy config cột của 1 user cho 1 lưới.</summary>
-        /// <remarks>Created by: ntdo — 28/05/2026</remarks>
+        /// Created By: ntdo (2026-06-07)
         public async Task<ServiceResponse> GetByGridAsync(string userID, string gridCode)
         {
             if (string.IsNullOrWhiteSpace(userID) || string.IsNullOrWhiteSpace(gridCode))
@@ -49,7 +50,7 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>Ghi đè toàn bộ config cột cho 1 user + 1 lưới (xóa cũ, insert mới).</summary>
-        /// <remarks>Created by: ntdo — 28/05/2026</remarks>
+        /// Created By: ntdo (2026-06-07)
         public async Task<ServiceResponse> BatchUpsertAsync(string userID, string gridCode, List<GridConfigColumnDto> columns)
         {
             if (string.IsNullOrWhiteSpace(userID) || string.IsNullOrWhiteSpace(gridCode))
@@ -86,7 +87,7 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>Reset cấu hình cột của user về mặc định hệ thống.</summary>
-        /// <remarks>Created by: ntdo — 29/05/2026</remarks>
+        /// Created By: ntdo (2026-06-07)
         public async Task<ServiceResponse> ResetAsync(string userID, string gridCode)
         {
             if (string.IsNullOrWhiteSpace(userID) || string.IsNullOrWhiteSpace(gridCode))

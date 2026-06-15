@@ -9,7 +9,7 @@ namespace FresherMisa2026.WebAPI.Controllers
 {
     /// <summary>
     /// Controller quản lý danh mục thành phần lương hệ thống — chỉ đọc, không cho phép ghi
-    /// Created By: Nguyen Thiet Do (2026-05-27)
+    /// Created By: ntdo (2026-06-10)
     /// </summary>
     [ApiController]
     public class SalaryCompositionSystemsController : BaseController<SalaryCompositionSystemEntity>
@@ -35,7 +35,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Lọc thành phần lương hệ thống theo nhiều điều kiện
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
+        /// Created By: ntdo (2026-06-10)
         [HttpGet("filter")]
         public async Task<ActionResult<ServiceResponse>> Filter([FromQuery] SalaryCompositionSystemFilterRequest request)
         {
@@ -46,6 +46,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Lọc nâng cao qua stored procedure: 1-search mã/tên, 2-loại thành phần, 3-field conditions
         /// </summary>
+        /// Created By: ntdo (2026-06-10)
         [HttpPost("datapaging")]
         public async Task<ActionResult<ServiceResponse>> AdvancedFilterProcSystem([FromBody] SalaryCompositionSystemAdvancedFilterRequest request)
         {
@@ -57,26 +58,38 @@ namespace FresherMisa2026.WebAPI.Controllers
 
         #region Read-only guard — 405 Method Not Allowed
 
+        /// <summary>Block POST — TPL hệ thống chỉ đọc</summary>
+        /// Created By: ntdo (2026-06-10)
         [HttpPost]
         public override Task<ActionResult<ServiceResponse>> Post([FromBody] SalaryCompositionSystemEntity entity)
             => Task.FromResult<ActionResult<ServiceResponse>>(StatusCode(405));
 
+        /// <summary>Block PUT — TPL hệ thống chỉ đọc</summary>
+        /// Created By: ntdo (2026-06-10)
         [HttpPut("{id:guid}")]
         public override Task<ActionResult<ServiceResponse>> Put(Guid id, [FromBody] SalaryCompositionSystemEntity entity)
             => Task.FromResult<ActionResult<ServiceResponse>>(StatusCode(405));
 
+        /// <summary>Block DELETE — TPL hệ thống chỉ đọc</summary>
+        /// Created By: ntdo (2026-06-10)
         [HttpDelete("{id:guid}")]
         public override Task<ActionResult<ServiceResponse>> DeleteByID(Guid id)
             => Task.FromResult<ActionResult<ServiceResponse>>(StatusCode(405));
 
+        /// <summary>Block bulk-delete — TPL hệ thống chỉ đọc</summary>
+        /// Created By: ntdo (2026-06-10)
         [HttpPost("bulk-delete")]
         public override Task<ActionResult<ServiceResponse>> DeleteMany([FromBody] List<Guid> ids)
             => Task.FromResult<ActionResult<ServiceResponse>>(StatusCode(405));
 
+        /// <summary>Block bulk-delete/partial — TPL hệ thống chỉ đọc</summary>
+        /// Created By: ntdo (2026-06-10)
         [HttpPost("bulk-delete/partial")]
         public override Task<ActionResult<ServiceResponse>> DeleteManyPartial([FromBody] List<Guid> ids)
             => Task.FromResult<ActionResult<ServiceResponse>>(StatusCode(405));
 
+        /// <summary>Block PATCH — TPL hệ thống chỉ đọc</summary>
+        /// Created By: ntdo (2026-06-10)
         [HttpPatch("{id:guid}/{fieldName}")]
         public override Task<ActionResult<ServiceResponse>> PatchField(Guid id, string fieldName, [FromBody] JsonElement value)
             => Task.FromResult<ActionResult<ServiceResponse>>(StatusCode(405));

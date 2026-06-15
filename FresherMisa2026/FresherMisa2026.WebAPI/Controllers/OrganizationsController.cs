@@ -6,7 +6,7 @@ namespace FresherMisa2026.WebAPI.Controllers
 {
     /// <summary>
     /// Controller quản lý đơn vị công tác
-    /// Created By: Nguyen Thiet Do (2026-05-27)
+    /// Created By: ntdo (2026-06-09)
     /// </summary>
     [ApiController]
     public class OrganizationsController : BaseController<Organization>

@@ -6,14 +6,16 @@ namespace FresherMisa2026.Application.Services
 {
     /// <summary>
     /// Service cho SalaryComponentType
-    /// Created By: Nguyen Thiet Do (2026-05-27)
+    /// Created By: ntdo (2026-06-05)
     /// </summary>
     public class SalaryComponentTypeService : BaseService<SalaryComponentType>, ISalaryComponentTypeService
     {
         #region Constructer
 
-        public SalaryComponentTypeService(ISalaryComponentTypeRepository repository)
-            : base(repository)
+        public SalaryComponentTypeService(
+            ISalaryComponentTypeRepository repository,
+            IAuditLogRepository auditLogRepository)
+            : base(repository, auditLogRepository)
         {
         }
 

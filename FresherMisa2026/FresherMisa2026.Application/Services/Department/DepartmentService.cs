@@ -10,6 +10,10 @@ using System.Text;
 
 namespace FresherMisa2026.Application.Services
 {
+    /// <summary>
+    /// Service cho Department
+    /// Created By: ntdo (2026-04-10)
+    /// </summary>
     public class DepartmentService : BaseService<Department>, IDepartmentService
     {
         private readonly IDepartmentRepository _deptRepository;
@@ -18,8 +22,9 @@ namespace FresherMisa2026.Application.Services
         public DepartmentService(
             IBaseRepository<Department> baseRepository,
             IDepartmentRepository departmentRepository,
-            IEmployeeRepository employeeRepository
-            ) : base(baseRepository)
+            IEmployeeRepository employeeRepository,
+            IAuditLogRepository auditLogRepository
+            ) : base(baseRepository, auditLogRepository)
         {
             _deptRepository = departmentRepository;
             _employeeRepository = employeeRepository;
@@ -29,7 +34,7 @@ namespace FresherMisa2026.Application.Services
         /// Lấy department theo code
         /// </summary>
         /// <returns></returns>
-        /// Created By: dvhai (10/04/2026)
+        /// Created By: ntdo (2026-04-10)
         public async Task<ServiceResponse> GetDepartmentByCodeAsync(string code)
         {
             if (string.IsNullOrWhiteSpace(code))
@@ -54,7 +59,7 @@ namespace FresherMisa2026.Application.Services
         /// </summary>
         /// <param name="code"></param>
         /// <returns></returns>
-        /// Created By: ntdo (17/04/2026)
+        /// Created By: ntdo (2026-04-12)
         public async Task<ServiceResponse> GetEmployeesByDepartmentCodeAsync(string code)
         {
             if (string.IsNullOrWhiteSpace(code))
@@ -81,7 +86,7 @@ namespace FresherMisa2026.Application.Services
         /// </summary>
         /// <param name="code"></param>
         /// <returns></returns>
-        /// Created By: ntdo (17/04/2026)
+        /// Created By: ntdo (2026-04-14)
 
         public async Task<ServiceResponse> GetEmployeeCountByDepartmentCodeAsync(string code)
         {
@@ -105,13 +110,17 @@ namespace FresherMisa2026.Application.Services
         }
 
         #region OVERRIDE METHODS
-        protected override async Task<bool> ValidateBeforeDeleteAsync(Guid entityId)
+        /// <summary>Kiểm tra còn nhân viên trong phòng ban không trước khi xóa</summary>
+        /// Created By: ntdo (2026-04-15)
+        protected override async Task<bool> ValidateBeforeDeleteAsync(Guid entityId, Department existingEntity)
         {
             var count = await _employeeRepository.CountEmployeesByDepartmentIdAsync(entityId);
             return count == 0;
         }
 
-        protected override Task<string?> GetDeleteValidationMessageAsync(Guid entityId)
+        /// <summary>Trả về thông báo khi block xóa phòng ban</summary>
+        /// Created By: ntdo (2026-04-15)
+        protected override Task<string?> GetDeleteValidationMessageAsync(Guid entityId, Department existingEntity)
         {
             return Task.FromResult<string?>("Không thể xóa phòng ban vì vẫn còn nhân viên thuộc phòng ban này");
         }
@@ -119,6 +128,7 @@ namespace FresherMisa2026.Application.Services
         /// <summary>
         /// Validate tùy chỉnh cho Department
         /// </summary>
+        /// Created By: ntdo (2026-04-17)
         protected override List<ValidationError> ValidateCustom(Department department)
         {
             var errors = new List<ValidationError>();

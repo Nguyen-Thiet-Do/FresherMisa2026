@@ -48,6 +48,10 @@ namespace FresherMisa2026.Infrastructure.Persistence.Queries
             FROM   pa_salary_composition_system sc
             LEFT JOIN pa_salary_component_type ct ON sc.`component_type_id` = ct.`component_type_id`";
 
+        /// <summary>SELECT đơn giản từ pa_salary_composition_system, không JOIN — dùng khi chỉ cần field gốc.</summary>
+        public const string SelectSalaryCompositionSystem = @"
+            SELECT * FROM pa_salary_composition_system";
+
         /// <summary>
         /// Subquery loại trừ các TPL hệ thống đã được kế thừa bởi đơn vị
         /// (Source = InheritedFromSystem trong pa_salary_composition).
@@ -77,8 +81,7 @@ namespace FresherMisa2026.Infrastructure.Persistence.Queries
 
         // ─── Stored Procedure names (snake_case: proc_{table}_{action}) ─────
 
-        public const string ProcSalaryCompositionFilter           = "proc_pa_salary_composition_filter";
-        public const string ProcSalaryCompositionAdvancedFilter   = "proc_pa_salary_composition_advanced_filter_paging";
+public const string ProcSalaryCompositionAdvancedFilter   = "proc_pa_salary_composition_advanced_filter_paging";
         public const string ProcSalaryCompositionSystemFilter     = "proc_pa_salary_composition_system_filter";
         public const string ProcSalaryCompositionSystemAdvanced   = "proc_pa_salary_composition_system_advanced_filter_paging";
         public const string ProcGridConfigGetByGrid               = "proc_pa_grid_config_get_by_grid";

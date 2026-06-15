@@ -5,6 +5,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace FresherMisa2026.WebAPI.Controllers
 {
+    /// <summary>
+    /// Controller quản lý upload/xóa file
+    /// Created By: ntdo (2026-04-29)
+    /// </summary>
     [ApiController]
     [Route("api/[controller]")]
     public class FilesController : ControllerBase
@@ -27,7 +31,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <param name="file">File cần upload</param>
         /// <param name="folder">Thư mục con lưu file (ví dụ: candidates, employees)</param>
         /// <returns>URL tương đối để truy cập file</returns>
-        /// Created By: Nguyen Thiet Do (09/05/2026)
+        /// Created By: ntdo (2026-04-29)
         [HttpPost("upload")]
         [Consumes("multipart/form-data")]
         public async Task<ActionResult<ServiceResponse>> Upload(IFormFile file, [FromQuery] string folder = "general")
@@ -52,7 +56,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Xóa file khỏi server
         /// </summary>
         /// <param name="relativeUrl">URL tương đối của file (ví dụ: /uploads/candidates/abc.pdf)</param>
-        /// Created By: Nguyen Thiet Do (09/05/2026)
+        /// Created By: ntdo (2026-04-29)
         [HttpDelete]
         public ActionResult<ServiceResponse> Delete([FromQuery] string relativeUrl)
         {

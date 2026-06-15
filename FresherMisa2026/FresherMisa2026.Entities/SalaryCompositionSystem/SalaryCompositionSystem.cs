@@ -7,7 +7,7 @@ namespace FresherMisa2026.Entities.SalaryCompositionSystem
 {
     /// <summary>
     /// Danh mục thành phần lương chuẩn của hệ thống (chỉ đọc với người dùng)
-    /// Created By: Nguyen Thiet Do (2026-05-26)
+    /// Created By: ntdo (2026-06-02)
     /// </summary>
     [ConfigTable("pa_salary_composition_system", false, "Code", useSnakeCase: true)]
     public class SalaryCompositionSystem : BaseModel

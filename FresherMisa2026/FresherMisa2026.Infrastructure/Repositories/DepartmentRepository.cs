@@ -2,7 +2,6 @@
 using FresherMisa2026.Application.Extensions;
 using FresherMisa2026.Application.Interfaces.Repositories;
 using FresherMisa2026.Entities.Department;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
@@ -14,10 +13,10 @@ namespace FresherMisa2026.Infrastructure.Repositories
     /// <summary>
     /// Repository for Department entity
     /// </summary>
-    /// Created By: dvhai (09/04/2026)
+    /// Created By: ntdo (2026-04-10)
     public class DepartmentRepository : BaseRepository<Department>, IDepartmentRepository
     {
-        public DepartmentRepository(IConfiguration configuration, IMemoryCache cache, ILogger<BaseRepository<Department>> logger) : base(configuration, cache, logger)
+        public DepartmentRepository(IConfiguration configuration, ILogger<BaseRepository<Department>> logger) : base(configuration, logger)
         {
         }
 
@@ -26,7 +25,7 @@ namespace FresherMisa2026.Infrastructure.Repositories
         /// </summary>
         /// <param name="code">Mã department</param>
         /// <returns>Department tìm thấy hoặc null</returns>
-        /// CREATED BY: dvhai (09/04/2026)
+        /// Created By: ntdo (2026-04-10)
         public async Task<Department> GetDepartmentByCode(string code)
         {
             string query = SQLExtension.GetQuery("Department.GetByCode");

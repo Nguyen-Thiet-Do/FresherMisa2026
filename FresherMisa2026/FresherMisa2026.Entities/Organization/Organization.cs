@@ -6,7 +6,7 @@ namespace FresherMisa2026.Entities.Organization
 {
     /// <summary>
     /// Đơn vị công tác / cơ cấu tổ chức
-    /// Created By: Nguyen Thiet Do (2026-05-26)
+    /// Created By: ntdo (2026-06-01)
     /// </summary>
     [ConfigTable("pa_organization", true, "Code", useSnakeCase: true)]
     public class Organization : BaseModel

@@ -6,46 +6,39 @@ using System.Collections.Generic;
 
 namespace FresherMisa2026.Application.Interfaces.Services
 {
+    /// <summary>
+    /// Interface service cho SalaryComposition
+    /// Created By: ntdo (2026-06-06)
+    /// </summary>
     public interface ISalaryCompositionService : IBaseService<SalaryComposition>
     {
-        /// <summary>
-        /// Lọc thành phần lương theo nhiều điều kiện có phân trang
-        /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
-        Task<ServiceResponse> FilterAsync(SalaryCompositionFilterRequest request);
-
-        /// <summary>
+/// <summary>
         /// Chuyển TPL hệ thống sang TPL đơn vị (Source = InheritedFromSystem)
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
+        /// Created By: ntdo (2026-06-06)
         Task<ServiceResponse> InheritFromSystemAsync(Guid systemCompositionId, List<Guid>? organizationIds);
 
         /// <summary>
         /// Chuyển nhiều TPL hệ thống sang TPL đơn vị — partial result
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
+        /// Created By: ntdo (2026-06-06)
         Task<ServiceResponse> InheritFromSystemBatchAsync(InheritFromSystemBatchRequest request);
 
-        /// <summary>
-        /// Lấy danh sách gợi ý (Code, Name, Description) cho ô nhập công thức — chỉ TPL đang theo dõi
-        /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
-        Task<ServiceResponse> GetSuggestionsAsync(string? search);
-
-        /// <summary>
+/// <summary>
         /// Chuyển trạng thái theo dõi của TPL (Active ↔ Inactive)
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
+        /// Created By: ntdo (2026-06-06)
         Task<ServiceResponse> SetStatusAsync(Guid id, SalaryCompositionStatus status);
 
         /// <summary>
         /// Chuyển trạng thái nhiều TPL cùng lúc — partial result
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-28)
+        /// Created By: ntdo (2026-06-06)
         Task<ServiceResponse> SetStatusBulkAsync(List<Guid> ids, SalaryCompositionStatus status);
 
 
         /// <summary>Lọc nâng cao 4 phần qua stored procedure</summary>
+        /// Created By: ntdo (2026-06-06)
         Task<ServiceResponse> AdvancedFilterWithProcAsync(SalaryCompositionAdvancedFilterRequest request);
 
         /// <summary>
@@ -55,6 +48,7 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// DataNotExist (không hệ thống, không tham chiếu — an toàn).
         /// Có phân trang theo danh sách đầu vào.
         /// </summary>
+        /// Created By: ntdo (2026-06-06)
         Task<ServiceResponse> ExitDataAsync(ExitDataRequest request);
     }
 }

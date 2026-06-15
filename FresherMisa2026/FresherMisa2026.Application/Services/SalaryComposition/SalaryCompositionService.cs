@@ -15,7 +15,7 @@ namespace FresherMisa2026.Application.Services
     /// <summary>
     /// Service cho SalaryComposition — xử lý nghiệp vụ TPL của đơn vị.
     /// </summary>
-    /// <remarks>Created by: ntdo — 27/05/2026 · Refactor: 03/06/2026</remarks>
+    /// <remarks>Created By: ntdo (2026-06-07) · Refactor: 2026-06-03</remarks>
     public class SalaryCompositionService
         : BaseService<SalaryCompositionEntity>, ISalaryCompositionService
     {
@@ -37,8 +37,9 @@ namespace FresherMisa2026.Application.Services
             ISalaryCompositionRepository salaryCompositionRepository,
             ISalaryCompositionSystemRepository systemRepository,
             IOrganizationRepository organizationRepository,
-            ILogger<SalaryCompositionService> logger)
-            : base(salaryCompositionRepository)
+            ILogger<SalaryCompositionService> logger,
+            IAuditLogRepository auditLogRepository)
+            : base(salaryCompositionRepository, auditLogRepository)
         {
             _salaryCompositionRepository = salaryCompositionRepository;
             _systemRepository = systemRepository;
@@ -51,22 +52,27 @@ namespace FresherMisa2026.Application.Services
         #region Methods - Insert/Update (override để kiểm tra TPL ngừng theo dõi)
 
         /// <summary>
-        /// Thêm mới — nếu công thức chứa TPL ngừng theo dõi và FE chưa xác nhận thì trả về 202 yêu cầu xác nhận.
+        /// Thêm mới — kiểm tra trùng mã TPL hệ thống chưa kế thừa, sau đó kiểm tra TPL ngừng theo dõi.
+        /// Trả 202 (ConfirmationRequired) nếu cần xác nhận; Created nếu thành công.
         /// </summary>
         /// <param name="entity">Thông tin TPL cần thêm.</param>
         /// <returns>ServiceResponse: Created, ConfirmationRequired hoặc BadRequest.</returns>
-        /// <remarks>Created by: ntdo — 01/06/2026</remarks>
+        /// Created By: ntdo (2026-06-07)
         public override async Task<ServiceResponse> InsertAsync(SalaryCompositionEntity entity)
         {
+            var systemConflict = await CheckSystemCodeConflictAsync(entity);
+            if (systemConflict != null) return systemConflict;
+
             var confirmation = await CheckUnfollowedConfirmationAsync(entity);
             if (confirmation != null) return confirmation;
+
             return await base.InsertAsync(entity);
         }
 
         /// <summary>
         /// Cập nhật — kiểm tra TPL ngừng theo dõi như InsertAsync.
         /// </summary>
-        /// <remarks>Created by: ntdo — 01/06/2026</remarks>
+        /// Created By: ntdo (2026-06-07)
         public override async Task<ServiceResponse> UpdateAsync(Guid id, SalaryCompositionEntity entity)
         {
             var confirmation = await CheckUnfollowedConfirmationAsync(entity);
@@ -84,7 +90,7 @@ namespace FresherMisa2026.Application.Services
         /// <param name="systemCompositionId">ID TPL hệ thống nguồn.</param>
         /// <param name="organizationIds">Danh sách đơn vị áp dụng; nếu null/empty thì lấy toàn bộ đơn vị gốc.</param>
         /// <returns>ServiceResponse của InsertAsync.</returns>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
+        /// Created By: ntdo (2026-06-07)
         public async Task<ServiceResponse> InheritFromSystemAsync(Guid systemCompositionId, List<Guid>? organizationIds)
         {
             var system = await _systemRepository.GetEntityByIDAsync(systemCompositionId);
@@ -107,7 +113,7 @@ namespace FresherMisa2026.Application.Services
         /// <summary>
         /// Chuyển nhiều TPL hệ thống thành TPL đơn vị — partial result: ID lỗi sẽ vào danh sách Failed nhưng vẫn tiếp tục.
         /// </summary>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
+        /// Created By: ntdo (2026-06-07)
         public async Task<ServiceResponse> InheritFromSystemBatchAsync(InheritFromSystemBatchRequest request)
         {
             if (request.SystemCompositionIds == null || request.SystemCompositionIds.Count == 0)
@@ -167,7 +173,7 @@ namespace FresherMisa2026.Application.Services
         /// <summary>
         /// Đổi trạng thái theo dõi của 1 TPL — patch trực tiếp, không qua full validation.
         /// </summary>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
+        /// Created By: ntdo (2026-06-07)
         public async Task<ServiceResponse> SetStatusAsync(Guid id, SalaryCompositionStatus status)
         {
             var entity = await _baseRepository.GetEntityByIDAsync(id);
@@ -181,7 +187,7 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>Đổi trạng thái theo dõi nhiều TPL — partial result.</summary>
-        /// <remarks>Created by: ntdo — 28/05/2026</remarks>
+        /// Created By: ntdo (2026-06-07)
         public async Task<ServiceResponse> SetStatusBulkAsync(List<Guid> ids, SalaryCompositionStatus status)
         {
             if (ids == null || ids.Count == 0)
@@ -210,41 +216,12 @@ namespace FresherMisa2026.Application.Services
             return CreateSuccessResponse(result);
         }
 
-        /// <summary>
-        /// Gợi ý Code/Name/Description cho ô nhập công thức — chỉ trả TPL đang theo dõi.
-        /// </summary>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
-        public async Task<ServiceResponse> GetSuggestionsAsync(string? search)
-        {
-            var all = (await _baseRepository.GetEntitiesAsync())
-                .Cast<SalaryCompositionEntity>()
-                .Where(e => e.Status == SalaryCompositionStatus.Active);
-
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var term = search.Trim();
-                all = all.Where(e =>
-                    e.Code.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                    e.Name.Contains(term, StringComparison.OrdinalIgnoreCase));
-            }
-
-            var suggestions = all
-                .OrderBy(e => e.Code)
-                .Select(e => new SalaryCompositionSuggestion
-                {
-                    Code        = e.Code,
-                    Name        = e.Name,
-                    Description = e.Description,
-                })
-                .ToList();
-
-            return CreateSuccessResponse(suggestions);
-        }
-
         /// <summary>Lọc nâng cao 4 phần qua Stored Procedure.</summary>
+        /// Created By: ntdo (2026-06-07)
         public async Task<ServiceResponse> AdvancedFilterWithProcAsync(SalaryCompositionAdvancedFilterRequest request)
-        {
-            var fieldErrors = ValidateFilterFieldNames(request.SearchFields, request.Filters);
+            {
+            var fieldErrors = ValidateFilterFieldNames(request.SearchFields, request.Filters, typeof(SalaryCompositionEntity));
+            fieldErrors.AddRange(ValidateSortFieldNames(request.Sort, typeof(SalaryCompositionEntity)));
             if (fieldErrors.Count > 0) return CreateValidationErrorResponse(fieldErrors);
 
             var (data, total) = await _salaryCompositionRepository.AdvancedFilterWithProcAsync(request);
@@ -259,13 +236,13 @@ namespace FresherMisa2026.Application.Services
         /// Phân loại danh sách TPL trước khi xóa/ngừng theo dõi hàng loạt: DataSystem, DataExist, DataNotExist.
         /// Build index Code→Referencers một lần (O(N)) thay vì O(N²) regex.
         /// </summary>
-        /// <remarks>Created by: ntdo — 02/06/2026 · Refactor 03/06/2026: build index để fix O(N²).</remarks>
+        /// Created By: ntdo (2026-06-07)
         public async Task<ServiceResponse> ExitDataAsync(ExitDataRequest request)
         {
             if (request.Ids == null || request.Ids.Count == 0)
                 return CreateErrorResponse(ResponseCode.BadRequest, "Danh sách Id không được rỗng");
 
-            // Bước 1: load toàn bộ TPL (qua cache 5')
+            // Bước 1: load toàn bộ TPL từ DB
             var all = (await _baseRepository.GetEntitiesAsync())
                 .Cast<SalaryCompositionEntity>()
                 .ToList();
@@ -326,12 +303,53 @@ namespace FresherMisa2026.Application.Services
             return CreateSuccessResponse(result);
         }
 
-        /// <summary>Lọc TPL theo nhiều điều kiện có phân trang (qua SP).</summary>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
-        public async Task<ServiceResponse> FilterAsync(SalaryCompositionFilterRequest request)
+#endregion
+
+        #region OVERRIDE METHODS - PatchFields
+
+        /// <summary>
+        /// Override: OrganizationIDs sống trong junction table — intercept trước khi base cố UPDATE cột không tồn tại.
+        /// </summary>
+        /// Created By: ntdo (2026-06-07)
+        public override async Task<ServiceResponse> PatchFieldsAsync(Guid entityId, Dictionary<string, JsonElement> fields)
         {
-            var (data, total) = await _salaryCompositionRepository.FilterAsync(request);
-            return CreatePagingResponse(total, request.PageIndex, request.PageSize, data);
+            var orgKey = fields.Keys.FirstOrDefault(k => k.Equals("OrganizationIDs", StringComparison.OrdinalIgnoreCase));
+            if (orgKey == null)
+                return await base.PatchFieldsAsync(entityId, fields);
+
+            List<Guid>? orgIds;
+            try { orgIds = JsonSerializer.Deserialize<List<Guid>>(fields[orgKey].GetRawText()); }
+            catch
+            {
+                return CreateValidationErrorResponse(new List<ValidationError>
+                {
+                    new("OrganizationIDs", "Giá trị không hợp lệ cho trường 'Đơn vị áp dụng'")
+                });
+            }
+
+            var tempEntity = new SalaryCompositionEntity { OrganizationIDs = orgIds };
+            var orgErrors = await ValidateAndNormalizeOrganizationIDsAsync(tempEntity);
+            if (orgErrors.Count > 0) return CreateValidationErrorResponse(orgErrors);
+
+            var existing = await _baseRepository.GetEntityByIDAsync(entityId);
+            if (existing == null)
+                return CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi");
+
+            // Các field còn lại (nếu có) → xử lý qua base
+            var otherFields = fields
+                .Where(f => !f.Key.Equals("OrganizationIDs", StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(f => f.Key, f => f.Value);
+
+            if (otherFields.Count > 0)
+            {
+                var baseResponse = await base.PatchFieldsAsync(entityId, otherFields);
+                if (!baseResponse.IsSuccess) return baseResponse;
+            }
+
+            var rows = await _salaryCompositionRepository.UpdateOrganizationIDsAsync(entityId, tempEntity.OrganizationIDs!);
+            return rows > 0
+                ? CreateSuccessResponse(rows)
+                : CreateErrorResponse(ResponseCode.NotFound, "Không tìm thấy bản ghi để cập nhật");
         }
 
         #endregion
@@ -342,6 +360,7 @@ namespace FresherMisa2026.Application.Services
         /// Validate: BR-03 độ dài + định dạng Code, BR-05 TaxType chỉ áp dụng khi Nature = Income,
         /// TaxableFormula/ExemptFormula chỉ dùng với PartiallyExempt.
         /// </summary>
+        /// Created By: ntdo (2026-06-07)
         protected override List<ValidationError> ValidateCustom(SalaryCompositionEntity entity)
         {
             var errors = new List<ValidationError>();
@@ -368,11 +387,7 @@ namespace FresherMisa2026.Application.Services
                              System.Globalization.CultureInfo.InvariantCulture, out _))
                     errors.Add(new ValidationError("Code", "Mã thành phần không được là một số thực"));
 
-                // Cấm Code trùng tên hàm dựng sẵn (SUM, IF, AND, OR, INT, TODAY) — tránh ambiguity
-                // khi BuildReferencerIndex / IsCodeReferencedInFormulas match identifier trong công thức.
-                else if (FormulaValidator.AllowedFunctions.Contains(entity.Code))
-                    errors.Add(new ValidationError("Code",
-                        $"Mã thành phần không được trùng tên hàm dựng sẵn: {string.Join(", ", FormulaValidator.AllowedFunctions)}"));
+;
             }
 
             // Bước 3: BR-05 — TaxType chỉ áp dụng khi Nature = Income
@@ -395,16 +410,17 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>Trước khi thêm: bắt buộc OrganizationIDs, normalize công thức và check tham chiếu mã.</summary>
+        /// Created By: ntdo (2026-06-07)
         protected override async Task<List<ValidationError>> ValidateBeforeInsertAsync(SalaryCompositionEntity entity)
         {
             var errors = new List<ValidationError>();
 
             NormalizeFormulas(entity);
-            AutoDerivePartialExemptFormulas(entity);
+            AutoDerivePartialExemptFormulas(entity, valueExpression: await ResolveValueExpressionAsync(entity));
 
             errors.AddRange(await ValidateAndNormalizeOrganizationIDsAsync(entity));
 
-            var (activeCodes, allCodes, _) = await LoadCodeSnapshotAsync();
+            var (activeCodes, allCodes, _) = await LoadCodeSnapshotAsync(entity);
             var effectiveActive = entity.IsSkipUnfollowedComposition ? allCodes : activeCodes;
             var (formulaErrors, _) = CollectFormulaWarnings(entity, effectiveActive, allCodes);
             errors.AddRange(formulaErrors);
@@ -413,19 +429,19 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>Trước khi cập nhật: BR-01 Code không đổi, BR-10 TPL hệ thống chỉ sửa 5 field.</summary>
-        protected override async Task<List<ValidationError>> ValidateBeforeUpdateAsync(Guid entityId, SalaryCompositionEntity entity)
+        /// Created By: ntdo (2026-06-07)
+        protected override async Task<List<ValidationError>> ValidateBeforeUpdateAsync(Guid entityId, SalaryCompositionEntity entity, SalaryCompositionEntity existing)
         {
             var errors = new List<ValidationError>();
 
             NormalizeFormulas(entity);
-            var existing = await _baseRepository.GetEntityByIDAsync(entityId);
-            AutoDerivePartialExemptFormulas(entity, existing?.TaxFormulaSource ?? TaxFormulaSource.None);
+            AutoDerivePartialExemptFormulas(entity, existing.TaxFormulaSource, await ResolveValueExpressionAsync(entity));
 
-            if (existing != null && existing.Code != entity.Code)
+            if (existing.Code != entity.Code)
                 errors.Add(new ValidationError("Code", "Mã thành phần lương không được thay đổi sau khi lưu"));
 
             // BR-10: TPL kế thừa hệ thống — Code đã chặn ở trên (hard), các field còn lại chặn động theo LockedFields snapshot.
-            if (existing?.Source == SalaryCompositionSource.InheritedFromSystem)
+            if (existing.Source == SalaryCompositionSource.InheritedFromSystem)
             {
                 var locked = GetLockedFieldChanges(entity, existing);
                 if (locked.Count > 0)
@@ -435,7 +451,7 @@ namespace FresherMisa2026.Application.Services
 
             errors.AddRange(await ValidateAndNormalizeOrganizationIDsAsync(entity));
 
-            var (activeCodes, allCodes, _) = await LoadCodeSnapshotAsync();
+            var (activeCodes, allCodes, _) = await LoadCodeSnapshotAsync(entity);
             var effectiveActive = entity.IsSkipUnfollowedComposition ? allCodes : activeCodes;
             var (formulaErrors, _) = CollectFormulaWarnings(entity, effectiveActive, allCodes);
             errors.AddRange(formulaErrors);
@@ -444,29 +460,24 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>BR-08: không xóa TPL hệ thống. BR-11: không xóa TPL đang được tham chiếu.</summary>
-        protected override async Task<bool> ValidateBeforeDeleteAsync(Guid entityId)
+        /// Created By: ntdo (2026-06-07)
+        protected override async Task<bool> ValidateBeforeDeleteAsync(Guid entityId, SalaryCompositionEntity entity)
         {
-            var entity = await _baseRepository.GetEntityByIDAsync(entityId);
-            if (entity == null) return true;
             if (entity.Source == SalaryCompositionSource.InheritedFromSystem) return false;
+            // Bảo vệ data legacy: Code trùng tên hàm dựng sẵn → coi như không tham chiếu
+            if (FormulaValidator.AllowedFunctions.Contains(entity.Code)) return true;
 
-            var all = (await _baseRepository.GetEntitiesAsync())
-                .Cast<SalaryCompositionEntity>()
-                .Where(e => e.SalaryCompositionID != entityId)
-                .ToList();
-
-            var allFormulas = CollectFormulas(all);
-            return !IsCodeReferencedInFormulas(entity.Code, allFormulas);
+            return !await _salaryCompositionRepository.IsCodeReferencedInFormulasAsync(entity.Code, entityId);
         }
 
-        protected override async Task<string?> GetDeleteValidationMessageAsync(Guid entityId)
+        /// <summary>Thông báo block xóa: phân biệt TPL hệ thống (không cho xóa) và TPL đang được công thức khác tham chiếu.</summary>
+        /// Created By: ntdo (2026-06-07)
+        protected override Task<string?> GetDeleteValidationMessageAsync(Guid entityId, SalaryCompositionEntity entity)
         {
-            var entity = await _baseRepository.GetEntityByIDAsync(entityId);
-            if (entity == null) return null;
-
-            return entity.Source == SalaryCompositionSource.InheritedFromSystem
+            var msg = entity.Source == SalaryCompositionSource.InheritedFromSystem
                 ? "Không thể xóa thành phần lương mặc định của hệ thống"
                 : $"Không thể xóa thành phần lương '{entity.Name}' vì đang được sử dụng trong công thức của thành phần lương khác";
+            return Task.FromResult<string?>(msg);
         }
 
         #endregion
@@ -474,15 +485,46 @@ namespace FresherMisa2026.Application.Services
         #region Private helpers
 
         /// <summary>
+        /// Kiểm tra mã TPL mới có trùng với TPL hệ thống chưa được kế thừa không.
+        /// Trả 202 (SystemCodeConflict) nếu trùng; null nếu OK để tiếp tục lưu.
+        /// </summary>
+        /// Created By: ntdo (2026-06-08)
+        private async Task<ServiceResponse?> CheckSystemCodeConflictAsync(SalaryCompositionEntity entity)
+        {
+            if (entity.IsSkipSystemCodeCheck) return null;
+            if (string.IsNullOrWhiteSpace(entity.Code)) return null;
+            if (entity.Source == SalaryCompositionSource.InheritedFromSystem) return null;
+
+            var systemComp = await _systemRepository.GetByCodeAsync(entity.Code);
+            if (systemComp == null) return null;
+
+            if (await _salaryCompositionRepository.ExistsInheritedByCodeAsync(entity.Code)) return null;
+
+            return new ServiceResponse
+            {
+                IsSuccess = false,
+                Code = (int)ResponseCode.ConfirmationRequired,
+                Data = new SystemCodeConflictConfirmation
+                {
+                    Code                  = systemComp.Code,
+                    SystemCompositionID   = systemComp.SystemCompositionID,
+                    SystemCompositionName = systemComp.Name,
+                },
+                UserMessage = "Yêu cầu xác nhận trước khi lưu"
+            };
+        }
+
+        /// <summary>
         /// Kiểm tra công thức có chứa mã TPL ngừng theo dõi không.
         /// Trả về response 202 (cần xác nhận) nếu có; null nếu OK để tiếp tục lưu.
         /// </summary>
+        /// Created By: ntdo (2026-06-08)
         private async Task<ServiceResponse?> CheckUnfollowedConfirmationAsync(SalaryCompositionEntity entity)
         {
             if (entity.IsSkipUnfollowedComposition) return null;
 
             NormalizeFormulas(entity);
-            var (activeCodes, allCodes, nameMap) = await LoadCodeSnapshotAsync();
+            var (activeCodes, allCodes, nameMap) = await LoadCodeSnapshotAsync(entity);
             var (_, inactiveCodes) = CollectFormulaWarnings(entity, activeCodes, allCodes);
 
             return inactiveCodes.Count > 0
@@ -494,6 +536,7 @@ namespace FresherMisa2026.Application.Services
         /// Map TPL hệ thống sang entity TPL đơn vị (Source = InheritedFromSystem).
         /// Caller phải đảm bảo <c>system.ComponentTypeID</c> không null — không fallback Guid.Empty để tránh data rác.
         /// </summary>
+        /// Created By: ntdo (2026-06-08)
         private static SalaryCompositionEntity MapSystemToComposition(
             Entities.SalaryCompositionSystem.SalaryCompositionSystem system,
             List<Guid> organizationIds) => new()
@@ -504,30 +547,29 @@ namespace FresherMisa2026.Application.Services
             SystemCompositionID = system.SystemCompositionID,
             Nature              = system.Nature,
             TaxType             = system.TaxType,
+            TaxDeductible       = system.TaxDeductible,
             ValueType           = system.ValueType,
             NormFormula         = system.NormFormula,
             TaxableFormula      = system.TaxableFormula,
             ExemptFormula       = system.ExemptFormula,
             Description         = system.Description,
+            ShowOnPayslip       = system.ShowOnPayslip,
             Source              = SalaryCompositionSource.InheritedFromSystem,
             Status              = SalaryCompositionStatus.Active,
             OrganizationIDs     = organizationIds,
             LockedFields        = system.LockedFields,
         };
 
+        /// Created By: ntdo (2026-06-08)
         private async Task<List<Guid>> GetRootOrganizationIdsAsync()
-            => (await _organizationRepository.GetEntitiesAsync())
-                .Cast<Organization>()
-                .Where(o => !o.IsDeleted && o.ParentID == null)
-                .Select(o => o.OrganizationID)
-                .ToList();
+            => (await _organizationRepository.GetRootOrganizationIdsAsync()).ToList();
 
         /// <summary>
         /// BR-10: lấy tên hiển thị các field bị khóa mà user cố thay đổi.
         /// Đọc snapshot LockedFields (JSON array of int) trên existing → so sánh từng field tương ứng.
         /// Code không nằm trong enum LockableField vì đã chặn cứng bên ngoài.
         /// </summary>
-        /// <remarks>Created by: ntdo — 05/06/2026</remarks>
+        /// Created By: ntdo (2026-06-09)
         private static List<string> GetLockedFieldChanges(SalaryCompositionEntity e, SalaryCompositionEntity existing)
         {
             var lockedIds = ParseLockedFieldIds(existing.LockedFields);
@@ -571,6 +613,7 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>Parse JSON array of int — robust: trả empty set nếu null/rỗng/sai format.</summary>
+        /// Created By: ntdo (2026-06-09)
         private static HashSet<int> ParseLockedFieldIds(string? json)
         {
             if (string.IsNullOrWhiteSpace(json)) return new HashSet<int>();
@@ -585,6 +628,7 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>So sánh 2 danh sách OrganizationID không quan tâm thứ tự.</summary>
+        /// Created By: ntdo (2026-06-09)
         private static bool AreOrganizationIdsEqual(List<Guid>? a, List<Guid>? b)
         {
             var aSet = a is null ? new HashSet<Guid>() : new HashSet<Guid>(a);
@@ -593,25 +637,35 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>
-        /// Snapshot codes (active, all) + map Code → Name. Một query DB duy nhất, tính 3 collection từ cùng nguồn.
+        /// Snapshot codes (active, all) + map Code → Name chỉ cho các mã xuất hiện trong công thức của entity.
+        /// Parse formula trước → extract identifiers → query WHERE code IN (...) thay vì fetch toàn bảng.
+        /// Nếu formula không chứa identifier nào (rỗng hoặc chỉ số/hàm): bỏ qua query, trả về sets rỗng.
         /// </summary>
+        /// Created By: ntdo (2026-06-09)
         private async Task<(HashSet<string> Active, HashSet<string> All, Dictionary<string, string> NameMap)>
-            LoadCodeSnapshotAsync()
+            LoadCodeSnapshotAsync(SalaryCompositionEntity entity)
         {
-            var all = (await _baseRepository.GetEntitiesAsync())
-                .Cast<SalaryCompositionEntity>()
-                .ToList();
+            var identifiers = FormulaValidator.ExtractIdentifiers(
+                entity.ValueFormula, entity.NormFormula, entity.TaxableFormula, entity.ExemptFormula);
 
-            var active  = all.Where(e => e.Status == SalaryCompositionStatus.Active)
-                             .Select(e => e.Code)
-                             .ToHashSet(StringComparer.Ordinal);
-            var allCodes = all.Select(e => e.Code).ToHashSet(StringComparer.Ordinal);
-            var nameMap  = all.ToDictionary(e => e.Code, e => e.Name, StringComparer.Ordinal);
+            if (identifiers.Count == 0)
+                return (new HashSet<string>(StringComparer.Ordinal),
+                        new HashSet<string>(StringComparer.Ordinal),
+                        new Dictionary<string, string>(StringComparer.Ordinal));
+
+            var found = (await _salaryCompositionRepository.GetCodeInfoByCodesAsync(identifiers)).ToList();
+
+            var active   = found.Where(c => c.Status == SalaryCompositionStatus.Active)
+                                .Select(c => c.Code)
+                                .ToHashSet(StringComparer.Ordinal);
+            var allCodes = found.Select(c => c.Code).ToHashSet(StringComparer.Ordinal);
+            var nameMap  = found.ToDictionary(c => c.Code, c => c.Name, StringComparer.Ordinal);
 
             return (active, allCodes, nameMap);
         }
 
         /// <summary>Trim whitespace đầu/cuối cho cả 4 trường công thức. Giữ nguyên dấu "=" nếu có.</summary>
+        /// Created By: ntdo (2026-06-09)
         private static void NormalizeFormulas(SalaryCompositionEntity entity)
         {
             entity.ValueFormula   = entity.ValueFormula?.Trim();
@@ -621,36 +675,42 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>Lấy phần biểu thức không có dấu "=" đầu — dùng khi build biểu thức toán học.</summary>
+        /// Created By: ntdo (2026-06-09)
         private static string StripEquals(string formula)
             => formula.StartsWith('=') ? formula[1..].TrimStart() : formula;
 
         /// <summary>
-        /// Khi PartiallyExempt và ValueFormula tồn tại: tự động tính phần còn lại
-        /// = ValueFormula - phần đã truyền. Gọi SAU NormalizeFormulas.
-        /// existingSource: truyền vào khi update để re-derive đúng khi ValueFormula thay đổi.
+        /// Khi PartiallyExempt và có giá trị (Formula hoặc AutoSum): tự động tính phần còn lại
+        /// = valueExpression - phần đã truyền. Gọi SAU NormalizeFormulas.
+        /// existingSource: truyền vào khi update để re-derive đúng khi valueExpression thay đổi.
+        /// valueExpression: ValueFormula (mode Formula) hoặc Code của TPL nguồn (mode AutoSum).
         /// </summary>
-        private static void AutoDerivePartialExemptFormulas(SalaryCompositionEntity entity, TaxFormulaSource existingSource = TaxFormulaSource.None)
+        /// Created By: ntdo (2026-06-10)
+        private static void AutoDerivePartialExemptFormulas(
+            SalaryCompositionEntity entity,
+            TaxFormulaSource existingSource = TaxFormulaSource.None,
+            string? valueExpression = null)
         {
             if (entity.TaxType != SalaryTaxType.PartiallyExempt)
             {
                 entity.TaxFormulaSource = TaxFormulaSource.None;
                 return;
             }
-            if (string.IsNullOrWhiteSpace(entity.ValueFormula)) return;
+            if (string.IsNullOrWhiteSpace(valueExpression)) return;
 
             var hasTaxable = !string.IsNullOrWhiteSpace(entity.TaxableFormula);
             var hasExempt  = !string.IsNullOrWhiteSpace(entity.ExemptFormula);
 
-            // Khi update: nếu bản ghi cũ đã có formula được tự suy, luôn re-derive để theo kịp ValueFormula mới
+            // Khi update: nếu bản ghi cũ đã có formula được tự suy, luôn re-derive để theo kịp valueExpression mới
             if (existingSource == TaxFormulaSource.ExemptDerived && hasTaxable)
             {
-                entity.ExemptFormula    = $"({StripEquals(entity.ValueFormula)}) - ({StripEquals(entity.TaxableFormula)})";
+                entity.ExemptFormula    = $"({StripEquals(valueExpression)}) - ({StripEquals(entity.TaxableFormula)})";
                 entity.TaxFormulaSource = TaxFormulaSource.ExemptDerived;
                 return;
             }
             if (existingSource == TaxFormulaSource.TaxableDerived && hasExempt)
             {
-                entity.TaxableFormula   = $"({StripEquals(entity.ValueFormula)}) - ({StripEquals(entity.ExemptFormula)})";
+                entity.TaxableFormula   = $"({StripEquals(valueExpression)}) - ({StripEquals(entity.ExemptFormula)})";
                 entity.TaxFormulaSource = TaxFormulaSource.TaxableDerived;
                 return;
             }
@@ -658,12 +718,12 @@ namespace FresherMisa2026.Application.Services
             // Insert hoặc thay đổi nguồn: suy từ cái nào đang null
             if (hasTaxable && !hasExempt)
             {
-                entity.ExemptFormula    = $"({StripEquals(entity.ValueFormula)}) - ({StripEquals(entity.TaxableFormula)})";
+                entity.ExemptFormula    = $"({StripEquals(valueExpression)}) - ({StripEquals(entity.TaxableFormula)})";
                 entity.TaxFormulaSource = TaxFormulaSource.ExemptDerived;
             }
             else if (hasExempt && !hasTaxable)
             {
-                entity.TaxableFormula   = $"({StripEquals(entity.ValueFormula)}) - ({StripEquals(entity.ExemptFormula)})";
+                entity.TaxableFormula   = $"({StripEquals(valueExpression)}) - ({StripEquals(entity.ExemptFormula)})";
                 entity.TaxFormulaSource = TaxFormulaSource.TaxableDerived;
             }
             else
@@ -672,7 +732,27 @@ namespace FresherMisa2026.Application.Services
             }
         }
 
+        /// <summary>
+        /// Lấy biểu thức giá trị dùng cho auto-derive PartiallyExempt.
+        /// Formula → ValueFormula string; AutoSum → Code của TPL nguồn.
+        /// </summary>
+        /// Created By: ntdo (2026-06-10)
+        private async Task<string?> ResolveValueExpressionAsync(SalaryCompositionEntity entity)
+        {
+            if (entity.ValueMode == SalaryValueMode.Formula)
+                return entity.ValueFormula;
+
+            if (entity.SumSourceCompositionID.HasValue)
+            {
+                var source = (SalaryCompositionEntity?)await _baseRepository.GetEntityByIDAsync(entity.SumSourceCompositionID.Value);
+                return source?.Code;
+            }
+
+            return null;
+        }
+
         /// <summary>Validate cả 4 công thức: trả lỗi cứng + danh sách mã ngừng theo dõi (đã dedup).</summary>
+        /// Created By: ntdo (2026-06-10)
         private static (List<ValidationError> Errors, List<string> InactiveCodes) CollectFormulaWarnings(
             SalaryCompositionEntity entity, HashSet<string> activeCodes, HashSet<string> allCodes)
         {
@@ -689,14 +769,12 @@ namespace FresherMisa2026.Application.Services
                         .Select(m => m.Code)
                         .Distinct(StringComparer.Ordinal)
                         .ToList();
-                    var msg = result.Error != null
-                        ? $"{label} không hợp lệ: {result.Error}; có {distinctCodes.Count} mã không tồn tại: {string.Join(", ", distinctCodes)}"
-                        : $"{label} có {distinctCodes.Count} mã thành phần lương không tồn tại: {string.Join(", ", distinctCodes)}";
+                    var msg = $"{label} có {distinctCodes.Count} mã thành phần lương không tồn tại: {string.Join(", ", distinctCodes)}";
                     errors.Add(new ValidationError(field, msg) { MissingCodes = result.MissingCodes });
                 }
                 else if (!result.IsValid)
                 {
-                    errors.Add(new ValidationError(field, $"{label} không hợp lệ: {result.Error}"));
+                    errors.Add(new ValidationError(field, $"{label} không hợp lệ"));
                 }
 
                 foreach (var code in result.InactiveCodes) inactiveCodes.Add(code);
@@ -710,6 +788,8 @@ namespace FresherMisa2026.Application.Services
             return (errors, inactiveCodes.ToList());
         }
 
+        /// <summary>Tạo response 202 ConfirmationRequired với danh sách mã TPL ngừng theo dõi kèm tên hiển thị.</summary>
+        /// Created By: ntdo (2026-06-10)
         private static ServiceResponse BuildConfirmationRequiredResponse(
             List<string> inactiveCodes, Dictionary<string, string> nameMap) => new()
         {
@@ -727,6 +807,7 @@ namespace FresherMisa2026.Application.Services
         };
 
         /// <summary>Bắt buộc OrganizationIDs + bottom-up roll-up nếu đủ children của 1 cha.</summary>
+        /// Created By: ntdo (2026-06-10)
         private async Task<List<ValidationError>> ValidateAndNormalizeOrganizationIDsAsync(SalaryCompositionEntity entity)
         {
             if (entity.OrganizationIDs == null || entity.OrganizationIDs.Count == 0)
@@ -736,6 +817,11 @@ namespace FresherMisa2026.Application.Services
             return new List<ValidationError>();
         }
 
+        /// <summary>
+        /// Bottom-up roll-up: khi toàn bộ con của 1 cha đều có trong danh sách → thay thế bằng cha,
+        /// lặp đến khi không còn collapse được nữa.
+        /// </summary>
+        /// Created By: ntdo (2026-06-10)
         private async Task<List<Guid>> NormalizeOrganizationIDsAsync(List<Guid> inputIds)
         {
             var allOrgs = (await _organizationRepository.GetEntitiesAsync())
@@ -780,6 +866,7 @@ namespace FresherMisa2026.Application.Services
         /// O(N × số_công_thức) regex; tránh O(N²) khi mỗi entity lại scan toàn bộ all.
         /// Lọc bỏ tên hàm dựng sẵn (SUM, IF, ...) khỏi index để tránh false-positive với Code legacy.
         /// </summary>
+        /// Created By: ntdo (2026-06-10)
         private static Dictionary<string, List<(Guid Id, string Code, string Name)>>
             BuildReferencerIndex(List<SalaryCompositionEntity> all)
         {
@@ -810,25 +897,8 @@ namespace FresherMisa2026.Application.Services
             return index;
         }
 
-        private static List<string?> CollectFormulas(IEnumerable<SalaryCompositionEntity> entities)
-            => entities
-                .SelectMany(e => new[] { e.ValueFormula, e.NormFormula, e.TaxableFormula, e.ExemptFormula })
-                .Where(f => !string.IsNullOrWhiteSpace(f))
-                .ToList();
-
-        /// <summary>
-        /// Word-boundary regex để tránh false positive (ví dụ LUONG khớp trong LUONG_CO_BAN).
-        /// Code trùng tên hàm dựng sẵn (đã bị ValidateCustom reject) thì coi như không tham chiếu —
-        /// bảo vệ data legacy nếu lỡ tồn tại trước khi rule có hiệu lực.
-        /// </summary>
-        private static bool IsCodeReferencedInFormulas(string code, List<string?> allFormulas)
-        {
-            if (FormulaValidator.AllowedFunctions.Contains(code)) return false;
-            var pattern = $@"(?<![A-Za-z0-9_]){Regex.Escape(code)}(?![A-Za-z0-9_])";
-            return allFormulas.Any(f => Regex.IsMatch(f!, pattern));
-        }
-
         /// <summary>Helper local — wrap BuildPagingResponse trong BaseService.</summary>
+        /// Created By: ntdo (2026-06-10)
         private ServiceResponse CreatePagingResponse(long total, int pageIndex, int pageSize,
             IEnumerable<SalaryCompositionEntity> data)
             => CreateSuccessResponse(new PagingResponse<SalaryCompositionEntity>

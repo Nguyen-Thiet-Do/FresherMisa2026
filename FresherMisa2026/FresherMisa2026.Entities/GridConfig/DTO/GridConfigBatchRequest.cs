@@ -4,7 +4,7 @@ namespace FresherMisa2026.Entities.GridConfig.DTO
 {
     /// <summary>
     /// Request batch upsert toàn bộ config cột của 1 user cho 1 lưới
-    /// Created By: Nguyen Thiet Do (2026-05-28)
+    /// Created By: ntdo (2026-06-03)
     /// </summary>
     public class GridConfigBatchRequest
     {

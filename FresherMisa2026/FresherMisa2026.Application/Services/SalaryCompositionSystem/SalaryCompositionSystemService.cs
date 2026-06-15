@@ -11,7 +11,7 @@ namespace FresherMisa2026.Application.Services
     /// <summary>
     /// Service cho danh mục TPL hệ thống.
     /// </summary>
-    /// <remarks>Created by: ntdo — 27/05/2026 · Refactor: 03/06/2026</remarks>
+    /// <remarks>Created By: ntdo (2026-06-06) · Refactor: 2026-06-03</remarks>
     public class SalaryCompositionSystemService
         : BaseService<SalaryCompositionSystemEntity>, ISalaryCompositionSystemService
     {
@@ -26,8 +26,9 @@ namespace FresherMisa2026.Application.Services
 
         public SalaryCompositionSystemService(
             ISalaryCompositionSystemRepository repository,
-            ILogger<SalaryCompositionSystemService> logger)
-            : base(repository)
+            ILogger<SalaryCompositionSystemService> logger,
+            IAuditLogRepository auditLogRepository)
+            : base(repository, auditLogRepository)
         {
             _systemRepository = repository;
             _logger = logger;
@@ -38,7 +39,7 @@ namespace FresherMisa2026.Application.Services
         #region Methods
 
         /// <summary>Lọc TPL hệ thống có phân trang.</summary>
-        /// <remarks>Created by: ntdo — 27/05/2026</remarks>
+        /// Created By: ntdo (2026-06-06)
         public async Task<ServiceResponse> FilterAsync(SalaryCompositionSystemFilterRequest request)
         {
             var (data, total) = await _systemRepository.FilterAsync(request);
@@ -46,9 +47,11 @@ namespace FresherMisa2026.Application.Services
         }
 
         /// <summary>Lọc nâng cao 3 phần qua Stored Procedure.</summary>
+        /// Created By: ntdo (2026-06-06)
         public async Task<ServiceResponse> AdvancedFilterWithProcAsync(SalaryCompositionSystemAdvancedFilterRequest request)
         {
-            var fieldErrors = ValidateFilterFieldNames(request.SearchFields, request.Filters);
+            var fieldErrors = ValidateFilterFieldNames(request.SearchFields, request.Filters, typeof(SalaryCompositionSystemEntity));
+            fieldErrors.AddRange(ValidateSortFieldNames(request.Sort, typeof(SalaryCompositionSystemEntity)));
             if (fieldErrors.Count > 0) return CreateValidationErrorResponse(fieldErrors);
 
             var (data, total) = await _systemRepository.AdvancedFilterWithProcAsync(request);
@@ -64,6 +67,7 @@ namespace FresherMisa2026.Application.Services
         #region OVERRIDE METHODS
 
         /// <summary>Validate: BR-05 — TaxType chỉ có ý nghĩa khi Nature = Income.</summary>
+        /// Created By: ntdo (2026-06-06)
         protected override List<ValidationError> ValidateCustom(SalaryCompositionSystemEntity entity)
         {
             var errors = new List<ValidationError>();
@@ -79,6 +83,7 @@ namespace FresherMisa2026.Application.Services
 
         #region Private helpers
 
+        /// Created By: ntdo (2026-06-07)
         private ServiceResponse CreatePagingResponse(long total, int pageIndex, int pageSize,
             IEnumerable<SalaryCompositionSystemEntity> data)
             => CreateSuccessResponse(new PagingResponse<SalaryCompositionSystemEntity>

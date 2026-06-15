@@ -9,7 +9,7 @@ namespace FresherMisa2026.WebAPI.Controllers
 {
     /// <summary>
     /// Controller quản lý thành phần lương
-    /// Created By: Nguyen Thiet Do (2026-05-27)
+    /// Created By: ntdo (2026-06-11)
     /// </summary>
     [ApiController]
     public class SalaryCompositionsController : BaseController<SalaryCompositionEntity>
@@ -35,7 +35,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Chuyển TPL hệ thống sang TPL đơn vị
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
+        /// Created By: ntdo (2026-06-11)
         [HttpPost("inherit/{systemCompositionId:guid}")]
         public async Task<ActionResult<ServiceResponse>> InheritFromSystem(
             Guid systemCompositionId,
@@ -48,7 +48,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Chuyển nhiều TPL hệ thống sang TPL đơn vị cùng lúc — partial result
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
+        /// Created By: ntdo (2026-06-11)
         [HttpPost("inherit/batch")]
         public async Task<ActionResult<ServiceResponse>> InheritFromSystemBatch([FromBody] InheritFromSystemBatchRequest request)
         {
@@ -59,7 +59,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Chuyển TPL sang đang theo dõi
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
+        /// Created By: ntdo (2026-06-11)
         [HttpPatch("{id:guid}/activate")]
         public async Task<ActionResult<ServiceResponse>> Activate(Guid id)
         {
@@ -72,7 +72,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Chuyển nhiều TPL sang đang theo dõi — partial result
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-28)
+        /// Created By: ntdo (2026-06-11)
         [HttpPatch("bulk-activate")]
         public async Task<ActionResult<ServiceResponse>> BulkActivate([FromBody] List<Guid> ids)
         {
@@ -83,7 +83,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Chuyển TPL sang bỏ theo dõi
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
+        /// Created By: ntdo (2026-06-12)
         [HttpPatch("{id:guid}/deactivate")]
         public async Task<ActionResult<ServiceResponse>> Deactivate(Guid id)
         {
@@ -96,7 +96,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Chuyển nhiều TPL sang bỏ theo dõi — partial result
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-28)
+        /// Created By: ntdo (2026-06-12)
         [HttpPatch("bulk-deactivate")]
         public async Task<ActionResult<ServiceResponse>> BulkDeactivate([FromBody] List<Guid> ids)
         {
@@ -108,7 +108,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// Phân loại danh sách TPL thành DataExist / DataSystem / DataNotExist có phân trang.
         /// Dùng trước khi xóa hoặc ngừng theo dõi hàng loạt để FE hiển thị cảnh báo phù hợp.
         /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-06-02)
+        /// Created By: ntdo (2026-06-12)
         [HttpPost("exit-data")]
         public async Task<ActionResult<ServiceResponse>> ExitData([FromBody] ExitDataRequest request)
         {
@@ -118,20 +118,10 @@ namespace FresherMisa2026.WebAPI.Controllers
         }
 
         /// <summary>
-        /// Gợi ý thành phần lương cho ô nhập công thức — trả về Code, Name, Description
-        /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
-        [HttpGet("suggestions")]
-        public async Task<ActionResult<ServiceResponse>> GetSuggestions([FromQuery] string? search)
-        {
-            var response = await _salaryCompositionService.GetSuggestionsAsync(search);
-            return Ok(response);
-        }
-
-        /// <summary>
         /// Thêm mới — trả HTTP 202 + isSuccess=false nếu công thức có TPL ngừng theo dõi (cần xác nhận).
         /// FE set IsSkipUnfollowedComposition=true rồi gửi lại để lưu.
         /// </summary>
+        /// Created By: ntdo (2026-06-12)
         public override async Task<ActionResult<ServiceResponse>> Post([FromBody] SalaryCompositionEntity entity)
         {
             var response = await _salaryCompositionService.InsertAsync(entity);
@@ -143,6 +133,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Cập nhật — tương tự Post: trả HTTP 202 nếu cần xác nhận.
         /// </summary>
+        /// Created By: ntdo (2026-06-12)
         public override async Task<ActionResult<ServiceResponse>> Put(Guid id, [FromBody] SalaryCompositionEntity entity)
         {
             var response = await _salaryCompositionService.UpdateAsync(id, entity);
@@ -155,6 +146,7 @@ namespace FresherMisa2026.WebAPI.Controllers
         /// <summary>
         /// Lọc nâng cao qua stored procedure: 1-search mã/tên, 2-trạng thái, 3-đơn vị, 4-field conditions
         /// </summary>
+        /// Created By: ntdo (2026-06-12)
         [HttpPost("datapaging")]
         public async Task<ActionResult<ServiceResponse>> AdvancedFilterProcSalary([FromBody] SalaryCompositionAdvancedFilterRequest request)
         {
@@ -162,17 +154,6 @@ namespace FresherMisa2026.WebAPI.Controllers
             return Ok(response);
         }
 
-        /// <summary>
-        /// Lọc thành phần lương theo nhiều điều kiện
-        /// </summary>
-        /// Created By: Nguyen Thiet Do (2026-05-27)
-        [HttpGet("filter")]
-        public async Task<ActionResult<ServiceResponse>> Filter([FromQuery] SalaryCompositionFilterRequest request)
-        {
-            var response = await _salaryCompositionService.FilterAsync(request);
-            return Ok(response);
-        }
-
-        #endregion
+#endregion
     }
 }

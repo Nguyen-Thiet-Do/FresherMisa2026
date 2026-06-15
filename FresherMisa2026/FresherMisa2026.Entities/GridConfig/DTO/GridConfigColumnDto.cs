@@ -2,7 +2,7 @@ namespace FresherMisa2026.Entities.GridConfig.DTO
 {
     /// <summary>
     /// Dữ liệu một cột trong request batch upsert grid config
-    /// Created By: Nguyen Thiet Do (2026-05-28)
+    /// Created By: ntdo (2026-06-03)
     /// </summary>
     public class GridConfigColumnDto
     {

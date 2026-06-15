@@ -6,7 +6,7 @@ namespace FresherMisa2026.Entities.SalaryComponentType
 {
     /// <summary>
     /// Loại thành phần lương (Lương, Phụ cấp, Bảo hiểm, Khấu trừ...)
-    /// Created By: Nguyen Thiet Do (2026-05-26)
+    /// Created By: ntdo (2026-06-01)
     /// </summary>
     [ConfigTable("pa_salary_component_type", false, "Code", useSnakeCase: true)]
     public class SalaryComponentType : BaseModel

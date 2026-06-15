@@ -13,6 +13,7 @@
 3. [Model reference](#3-model-reference)
    - [3.6 Luồng xác nhận khi công thức có TPL ngừng theo dõi](#36-luồng-xác-nhận-khi-công-thức-có-tpl-ngừng-theo-dõi)
    - [3.7 Response chi tiết khi công thức có mã TPL không tồn tại](#37-response-chi-tiết-khi-công-thức-có-mã-tpl-không-tồn-tại)
+   - [3.8 Luồng xác nhận khi mã mới trùng với TPL hệ thống chưa kế thừa](#38-luồng-xác-nhận-khi-mã-mới-trùng-với-tpl-hệ-thống-chưa-kế-thừa)
 4. [Loại TPL — SalaryComponentTypes](#4-loại-tpl--salarycomponenttypes)
 5. [TPL Hệ thống — SalaryCompositionSystems](#5-tpl-hệ-thống--salarycompositionsystems)
 6. [TPL Đơn vị — SalaryCompositions](#6-tpl-đơn-vị--salarycompositions)
@@ -157,6 +158,15 @@ sort=Code                →  ORDER BY Code ASC
 | `0` | Inactive | Bỏ theo dõi |
 | `1` | Active | Đang theo dõi |
 
+### ConfirmationType — Loại xác nhận khi nhận HTTP 202
+
+> FE dùng `data.type` để biết dialog nào cần hiển thị — không parse `userMessage`.
+
+| Giá trị | Tên | Mô tả |
+|---|---|---|
+| `1` | UnfollowedComposition | Công thức chứa TPL ngừng theo dõi — xem mục 3.6 |
+| `2` | SystemCodeConflict | Mã mới trùng TPL hệ thống chưa kế thừa — xem mục 3.8 |
+
 ### TaxFormulaSource — Nguồn công thức thuế
 
 > Chỉ có ý nghĩa khi `taxType = 3` (PartiallyExempt). Backend tự set — FE dùng để render UI.
@@ -274,6 +284,7 @@ sort=Code                →  ORDER BY Code ASC
   "status": 1,
   "lockedFields": "[2,5,7]",
   "isSkipUnfollowedComposition": false,
+  "isSkipSystemCodeCheck": false,
   "createdBy": null,
   "createDate": "2026-05-27T10:00:00",
   "modifiedBy": null,
@@ -290,6 +301,7 @@ sort=Code                →  ORDER BY Code ASC
 > **`exemptFormula`** — công thức phần **miễn thuế** TNCN — **chỉ dùng khi `taxType = 3` (PartiallyExempt)**. Để `null` với các loại thuế khác. Khi `taxType = 3`, chỉ cần truyền **một trong hai**: backend tự suy ra cái còn lại = `(valueFormula) - (cái đã truyền)`. Nếu không có `valueFormula` (AutoSum mode), phải truyền đủ cả hai.  
 > **`taxFormulaSource`** — **read-only**, backend tự set. Cho biết công thức nào được tự suy: `0` = cả hai nhập thủ công, `1` = `exemptFormula` được suy từ `(valueFormula) - (taxableFormula)`, `2` = `taxableFormula` được suy từ `(valueFormula) - (exemptFormula)`. FE dùng để ẩn công thức derived khỏi UI (chỉ hiển thị công thức người dùng tự nhập). Khi update, backend tự re-derive dựa theo giá trị này — FE không cần xử lý gì thêm.  
 > **`isSkipUnfollowedComposition`** — **không lưu DB**, chỉ dùng khi tạo / cập nhật. Mặc định `false`. Xem mục 3.6.  
+> **`isSkipSystemCodeCheck`** — **không lưu DB**, chỉ dùng khi tạo mới. FE truyền `true` khi người dùng chọn "vẫn thêm mới bình thường" sau khi nhận cảnh báo SystemCodeConflict (202 `type: 2`). Mặc định `false`. Xem mục 3.8.  
 > **`lockedFields`** — read-only đối với FE. Khi `source = 2` (InheritedFromSystem), backend snapshot từ `pa_salary_composition_system.LockedFields` tại lúc kế thừa và dùng để chặn sửa các field tương ứng (xem mục 6.6). Khi `source = 1` (Custom) thì luôn `null`.
 
 ### 3.4 Quy tắc validation khi tạo / cập nhật TPL
@@ -370,12 +382,12 @@ Khi POST / PUT với công thức chứa mã TPL ngừng theo dõi (status = 0),
   "isSuccess": false,
   "code": 202,
   "data": {
-    "requiresConfirmation": true,
+    "type": 1,
     "inactiveCodes": [
       { "code": "PHU_CAP_NGUNG", "name": "Phụ cấp đã ngừng" }
     ]
   },
-  "userMessage": "Công thức có 1 thành phần lương đang ngừng theo dõi: PHU_CAP_NGUNG. Bạn có chắc chắn muốn lưu không?"
+  "userMessage": "Yêu cầu xác nhận trước khi lưu"
 }
 ```
 
@@ -475,6 +487,71 @@ for (const err of response.data) {
   }
 }
 ```
+
+---
+
+### 3.8 Luồng xác nhận khi mã mới trùng với TPL hệ thống chưa kế thừa
+
+Khi POST tạo mới TPL với `code` trùng với một TPL hệ thống (`SalaryCompositionSystem`) mà **chưa có** bản ghi kế thừa tương ứng trong `SalaryCompositions`, backend trả **202** để FE hỏi người dùng muốn làm gì.
+
+> Check này chỉ áp dụng khi **tạo mới thủ công** (`source = Custom`). Không áp dụng khi cập nhật (PUT) vì `code` không được sửa, và không áp dụng khi kế thừa hệ thống qua `POST /inherit` vì `source` lúc đó là `InheritedFromSystem`.
+
+**Bước 1 — Gửi lần đầu** (`isSkipSystemCodeCheck: false`, mặc định):
+
+```json
+// POST /api/SalaryCompositions
+{
+  "code": "LUONG_CO_BAN",
+  "name": "Lương cơ bản tùy chỉnh",
+  "isSkipSystemCodeCheck": false,
+  ...
+}
+```
+
+**Response HTTP 202:**
+```json
+{
+  "isSuccess": false,
+  "code": 202,
+  "data": {
+    "type": 2,
+    "code": "LUONG_CO_BAN",
+    "systemCompositionID": "a1b2c3d4-0000-0000-0000-000000000001",
+    "systemCompositionName": "Lương cơ bản"
+  },
+  "userMessage": "Yêu cầu xác nhận trước khi lưu"
+}
+```
+
+FE hiển thị dialog với 2 lựa chọn:
+
+| Lựa chọn | Hành động FE |
+|---|---|
+| **1 — Chuyển TPL hệ thống sang** | Gọi `POST /api/SalaryCompositions/inherit/{data.systemCompositionID}` |
+| **2 — Vẫn thêm mới bình thường** | Gửi lại POST ban đầu với `isSkipSystemCodeCheck: true` |
+
+**Bước 2a — Người dùng chọn kế thừa:**
+
+```
+POST /api/SalaryCompositions/inherit/a1b2c3d4-0000-0000-0000-000000000001
+```
+
+→ Xem mục 6.14 để biết chi tiết.
+
+**Bước 2b — Người dùng chọn thêm mới bình thường:**
+
+```json
+// POST /api/SalaryCompositions
+{
+  "code": "LUONG_CO_BAN",
+  "isSkipSystemCodeCheck": true,
+  ...
+}
+```
+
+**Response 201** — lưu thành công.
+
+> ⚠️ Thứ tự check khi POST: **SystemCodeConflict** (3.8) → **UnfollowedComposition** (3.6) → lưu. Nếu người dùng chọn thêm mới bình thường (`isSkipSystemCodeCheck: true`) mà công thức còn tham chiếu TPL ngừng theo dõi, lần gửi tiếp theo sẽ nhận 202 `type: 1` yêu cầu xác nhận tiếp.
 
 ---
 
@@ -862,16 +939,19 @@ POST /api/SalaryCompositions
   "showOnPayslip": true,
   "hideWhenZero": false,
   "organizationIDs": ["uuid-org-1", "uuid-org-2"],
-  "isSkipUnfollowedComposition": false
+  "isSkipUnfollowedComposition": false,
+  "isSkipSystemCodeCheck": false
 }
 ```
 
 > **`organizationIDs` là bắt buộc** — phải truyền ít nhất 1 đơn vị. Backend tự normalize (gộp lên cha nếu đủ con).  
 > FE không cần truyền: `salaryCompositionID` (auto-generate), `componentTypeName` / `organizationNames` (read-only), `source` (mặc định `Custom`), `status` (mặc định `Active`), `systemCompositionID`, `state`, `isDeleted`, `createDate`, `modifiedDate`.  
-> **`isSkipUnfollowedComposition`** — mặc định `false`. Xem mục 3.6 để hiểu luồng xác nhận.
+> **`isSkipUnfollowedComposition`** — mặc định `false`. Xem mục 3.6 để hiểu luồng xác nhận.  
+> **`isSkipSystemCodeCheck`** — mặc định `false`. Xem mục 3.8 để hiểu luồng xác nhận.
 
 **Response 201:** Lưu thành công — `data` là `1`.  
-**Response 202:** Công thức chứa TPL ngừng theo dõi — `data` là `{ requiresConfirmation, inactiveCodes[] }`. Gửi lại với `isSkipUnfollowedComposition: true` để lưu.  
+**Response 202 (`data.type: 2`):** Mã trùng TPL hệ thống chưa kế thừa — `data` là `{ type, code, systemCompositionID, systemCompositionName }`. Xem mục 3.8.  
+**Response 202 (`data.type: 1`):** Công thức chứa TPL ngừng theo dõi — `data` là `{ type, inactiveCodes[] }`. Gửi lại với `isSkipUnfollowedComposition: true` để lưu. Xem mục 3.6.  
 **Response 400:** Validation lỗi — `data` là mảng `[{ field, message }]`. Nếu lỗi do công thức tham chiếu mã TPL không tồn tại, entry sẽ có thêm `missingCodes` để FE highlight — xem mục [3.7](#37-response-chi-tiết-khi-công-thức-có-mã-tpl-không-tồn-tại).  
 **Response 409:** Mã đã tồn tại.
 
@@ -1502,7 +1582,7 @@ Xem chi tiết tại mục [5.5](#55-lọc-nâng-cao--datapaging).
 |---|---|---|
 | `200` | OK | Thành công (GET, PUT, PATCH, DELETE) |
 | `201` | Created | Tạo mới thành công (POST) |
-| `202` | Confirmation Required | Công thức chứa TPL ngừng theo dõi — **không phải lỗi**, cần người dùng xác nhận. `isSuccess: false`, `data.requiresConfirmation: true` |
+| `202` | Confirmation Required | Cần người dùng xác nhận trước khi lưu. `isSuccess: false`. Phân biệt bằng `data.type`: `1` = công thức chứa TPL ngừng theo dõi (xem 3.6), `2` = mã trùng TPL hệ thống chưa kế thừa (xem 3.8) |
 | `400` | Bad Request | Validation lỗi; cố sửa `Code`; xóa TPL hệ thống hoặc TPL đang được tham chiếu trong công thức; cố sửa field bị lock trên TPL hệ thống |
 | `404` | Not Found | Không tìm thấy bản ghi theo ID |
 | `405` | Method Not Allowed | Gọi POST/PUT/DELETE/PATCH trên SalaryCompositionSystems |
@@ -1586,5 +1666,6 @@ isSuccess: false + code: 202  →  Cảnh báo, người dùng có thể bỏ qu
 | `Status` | `int` | Enum SalaryCompositionStatus |
 | `LockedFields` | `string?` | Snapshot JSON array of int — copy từ TPL hệ thống lúc kế thừa. Read-only, không dùng làm filter field. Xem mục 6.6 |
 | `IsSkipUnfollowedComposition` | `bool` | **Không lưu DB** — `true` khi người dùng xác nhận lưu dù công thức (`ValueFormula` / `NormFormula` / `TaxableFormula` / `ExemptFormula`) có TPL ngừng theo dõi. Mặc định `false`. Không dùng làm filter field |
+| `IsSkipSystemCodeCheck` | `bool` | **Không lưu DB** — `true` khi người dùng chọn "vẫn thêm mới bình thường" sau cảnh báo mã trùng TPL hệ thống. Chỉ dùng khi tạo mới (POST). Mặc định `false`. Không dùng làm filter field |
 | `CreateDate` | `datetime` | |
 | `ModifiedDate` | `datetime?` | |

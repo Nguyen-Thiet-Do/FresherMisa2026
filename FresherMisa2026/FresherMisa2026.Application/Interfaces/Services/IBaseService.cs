@@ -5,13 +5,17 @@ using System.Text.Json;
 
 namespace FresherMisa2026.Application.Interfaces.Services
 {
+    /// <summary>
+    /// Interface service dùng chung
+    /// Created By: ntdo (09/04/2026)
+    /// </summary>
     public interface IBaseService<TEntity>
     {
         /// <summary>
         /// Lấy tất cả bản ghi
         /// </summary>
         /// <returns>Danh sách bản ghi</returns>
-        /// CREATED BY: DVHAI 11/07/2026
+        /// Created By: ntdo (09/04/2026)
         Task<ServiceResponse> GetEntitiesAsync();
 
         /// <summary>
@@ -19,7 +23,7 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// </summary>
         /// <param name="entityId">Id của bản ghi</param>
         /// <returns>Bản ghi thông tin 1 bản ghi</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
+        /// Created By: ntdo (09/04/2026)
         Task<ServiceResponse> GetEntityByIDAsync(Guid entityId);
 
         /// <summary>
@@ -27,7 +31,7 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// </summary>
         /// <param name="entityId">Id bản ghi</param>
         /// <returns>ServiceResponse</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
+        /// Created By: ntdo (09/04/2026)
         Task<ServiceResponse> DeleteByIDAsync(Guid entityId);
 
         /// <summary>
@@ -35,7 +39,7 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// </summary>
         /// <param name="ids">Danh sách Id cần xóa</param>
         /// <returns>ServiceResponse</returns>
-        /// CREATED BY: DVHAI (19/05/2026)
+        /// Created By: ntdo (19/04/2026)
         Task<ServiceResponse> DeleteManyAsync(List<Guid> ids);
 
         /// <summary>
@@ -43,7 +47,7 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// </summary>
         /// <param name="ids">Danh sách Id cần xóa</param>
         /// <returns>ServiceResponse chứa BulkDeleteResult</returns>
-        /// CREATED BY: DVHAI (19/05/2026)
+        /// Created By: ntdo (19/04/2026)
         Task<ServiceResponse> DeleteManyPartialAsync(List<Guid> ids);
 
         /// <summary>
@@ -51,7 +55,7 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// </summary>
         /// <param name="entity">Thực thể cần thêm</param>
         /// <returns>ServiceResponse</returns>
-        /// CREATED BY: DVHAI (11/07/2026)
+        /// Created By: ntdo (09/04/2026)
         Task<ServiceResponse> InsertAsync(TEntity entity);  
 
         /// <summary>
@@ -60,7 +64,7 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// <param name="entityId">Id bản ghi</param>
         /// <param name="entity">Thông tin bản ghi</param>
         /// <returns>ServiceResponse</returns>
-        /// CREATED BY: DVHAI (11/07/2021)
+        /// Created By: ntdo (09/04/2026)
         Task<ServiceResponse> UpdateAsync(Guid entityId, TEntity entity);
 
         /// <summary>
@@ -68,7 +72,7 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// </summary>
         /// <param name="pagingRequest">Thông tin phân trang</param>
         /// <returns>Danh sách thực thể phân trang</returns>
-        /// CREATED BY: DVHAI (07/07/2026)
+        /// Created By: ntdo (09/04/2026)
         Task<ServiceResponse> GetFilterPagingAsync(PagingRequest pagingRequest);
 
         /// <summary>
@@ -78,10 +82,11 @@ namespace FresherMisa2026.Application.Interfaces.Services
         /// <param name="fieldName">Tên trường cần cập nhật</param>
         /// <param name="value">Giá trị mới dưới dạng JSON</param>
         /// <returns>ServiceResponse</returns>
-        /// CREATED BY: NTDo (24/05/2026)
+        /// Created By: ntdo (24/04/2026)
         Task<ServiceResponse> PatchFieldAsync(Guid entityId, string fieldName, JsonElement value);
 
         /// <summary>Cập nhật nhiều trường cùng lúc — validate từng trường trước khi ghi.</summary>
+        /// Created By: ntdo (24/04/2026)
         Task<ServiceResponse> PatchFieldsAsync(Guid entityId, Dictionary<string, JsonElement> fields);
     }
 }
